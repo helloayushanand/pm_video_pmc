@@ -1,0 +1,30 @@
+﻿# Configuration
+python-dotenv>=1.0,<2.0
+
+# Data validation and structured schemas
+pydantic>=2.8,<3.0
+
+# PDF and image processing
+PyMuPDF>=1.24,<2.0
+Pillow>=10.4,<13.0
+
+# AI and VLM integration
+openai>=1.50,<3.0
+
+# Voice generation and audio alignment
+elevenlabs>=1.9,<3.0
+
+# HTTP requests, retries, and progress
+httpx>=0.27,<1.0
+tenacity>=8.5,<10.0
+tqdm>=4.66,<5.0
+
+# Local command-line output
+rich>=13.8,<15.0
+
+# Audio and video metadata inspection
+mutagen>=1.47,<2.0
+
+# Testing
+pytest>=8.3,<10.0
+pytest-mock>=3.14,<4.0
