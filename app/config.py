@@ -25,14 +25,25 @@ class Settings:
 
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1")
-
-    elevenlabs_api_key: str | None = os.getenv("ELEVENLABS_API_KEY")
-    elevenlabs_voice_id: str | None = os.getenv("ELEVENLABS_VOICE_ID")
-    elevenlabs_model_id: str = os.getenv(
-        "ELEVENLABS_MODEL_ID",
-        "eleven_multilingual_v2",
+    openai_tts_model: str = os.getenv(
+        "OPENAI_TTS_MODEL",
+        "gpt-4o-mini-tts",
     )
 
+    openai_tts_voice: str = os.getenv(
+        "OPENAI_TTS_VOICE",
+        "coral",
+    )
+
+    openai_tts_format: str = os.getenv(
+        "OPENAI_TTS_FORMAT",
+        "mp3",
+    )
+
+    openai_transcription_model: str = os.getenv(
+        "OPENAI_TRANSCRIPTION_MODEL",
+        "whisper-1",
+    )
     pdf_render_dpi: int = int(os.getenv("PDF_RENDER_DPI", "150"))
 
     video_width: int = int(os.getenv("VIDEO_WIDTH", "1920"))
@@ -72,29 +83,34 @@ def create_project_directories() -> None:
 
 def validate_environment(
     require_openai: bool = False,
-    require_elevenlabs: bool = False,
-) :
+):
     """Return missing or invalid environment configuration values."""
 
-    errors: list[str] = []
+    errors = []
 
     if require_openai and not settings.openai_api_key:
-        errors.append("OPENAI_API_KEY is not configured.")
-
-    if require_elevenlabs and not settings.elevenlabs_api_key:
-        errors.append("ELEVENLABS_API_KEY is not configured.")
-
-    if require_elevenlabs and not settings.elevenlabs_voice_id:
-        errors.append("ELEVENLABS_VOICE_ID is not configured.")
+        errors.append(
+            "OPENAI_API_KEY is not configured."
+        )
 
     if settings.pdf_render_dpi <= 0:
-        errors.append("PDF_RENDER_DPI must be greater than zero.")
+        errors.append(
+            "PDF_RENDER_DPI must be greater than zero."
+        )
 
-    if settings.video_width <= 0 or settings.video_height <= 0:
-        errors.append("Video dimensions must be greater than zero.")
+    if settings.video_width <= 0:
+        errors.append(
+            "VIDEO_WIDTH must be greater than zero."
+        )
+
+    if settings.video_height <= 0:
+        errors.append(
+            "VIDEO_HEIGHT must be greater than zero."
+        )
 
     if settings.video_fps <= 0:
-        errors.append("VIDEO_FPS must be greater than zero.")
+        errors.append(
+            "VIDEO_FPS must be greater than zero."
+        )
 
     return errors
-

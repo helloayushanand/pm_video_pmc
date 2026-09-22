@@ -638,7 +638,10 @@ class OpenAIVLMService:
         """Save the complete provider response locally."""
 
         if hasattr(response, "model_dump"):
-            data = response.model_dump(mode="json")
+            data = response.model_dump(
+                mode="json",
+                warnings=False,
+            )
         elif hasattr(response, "json"):
             data = json.loads(response.json())
         else:

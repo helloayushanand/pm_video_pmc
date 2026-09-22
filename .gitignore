@@ -1,38 +1,116 @@
-# Confidential candidate input documents
+# ============================================================
+# Confidential candidate inputs
+# ============================================================
+
 inputs/*
 !inputs/.gitkeep
 
-# Generated pipeline runs and artifacts
+# ============================================================
+# Pipeline-generated runs
+# Contains extracted PII, prompts, API responses, audio and video
+# ============================================================
+
 runs/*
 !runs/.gitkeep
 
-# Environment variables and secrets
+# ============================================================
+# Secrets and local environment configuration
+# ============================================================
+
 .env
+.env.*
+!.env.example
 
-# Python virtual environment
+# ============================================================
+# Python virtual environments
+# ============================================================
+
 env/
-.venv/
 venv/
+.venv/
 
-# Python cache and compiled files
+# ============================================================
+# Python caches and build artifacts
+# ============================================================
+
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Test and tooling caches
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 .coverage
+coverage.xml
 htmlcov/
+dist/
+build/
+*.egg-info/
 
-# Logs and generated media
+# ============================================================
+# Node.js dependencies and caches
+# ============================================================
+
+node_modules/
+**/node_modules/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Keep package-lock.json in Git
+# Do not ignore package-lock.json
+
+# ============================================================
+# Remotion-generated and temporary artifacts
+# ============================================================
+
+renderer/remotion-project/render-props.json
+renderer/remotion-project/public/generated/*
+!renderer/remotion-project/public/generated/.gitkeep
+renderer/remotion-project/out/
+renderer/remotion-project/.cache/
+renderer/remotion-project/.remotion/
+renderer/remotion-project/build/
+
+# ============================================================
+# Generated schema/debug files
+# ============================================================
+
+dossier_schema.json
+storyboard_schema.json
+
+# ============================================================
+# Generated media and logs outside ignored run folders
+# ============================================================
+
 *.log
 *.mp3
 *.wav
+*.m4a
+*.aac
 *.mp4
+*.mov
+*.webm
 
-# VS Code and operating system files
+# ============================================================
+# Temporary files
+# ============================================================
+
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*.pid
+
+# ============================================================
+# Editor and operating system files
+# ============================================================
+
 .vscode/
+.idea/
 .DS_Store
 Thumbs.db
-``
+desktop.ini
+`

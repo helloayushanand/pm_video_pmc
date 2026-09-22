@@ -3,12 +3,13 @@
 from app.services.alignment_service import (
     AlignmentConfigurationError,
     AlignmentServiceError,
-    ElevenLabsAlignmentService,
+    OpenAIAlignmentService,
 )
+
 from app.services.audio_service import (
     AudioConfigurationError,
     AudioServiceError,
-    ElevenLabsAudioService,
+    OpenAIAudioService,
 )
 from app.services.pdf_service import (
     PDFPreparationResult,
@@ -32,8 +33,8 @@ __all__ = [
     "AlignmentServiceError",
     "AudioConfigurationError",
     "AudioServiceError",
-    "ElevenLabsAlignmentService",
-    "ElevenLabsAudioService",
+    "OpenAIAlignmentService",
+    "OpenAIAudioService",
     "OpenAIVLMService",
     "PDFPreparationResult",
     "PDFService",

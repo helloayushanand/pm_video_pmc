@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -200,6 +198,16 @@ class SensitiveInformation(StrictBaseModel):
     source_references: list[SourceReference] = Field(default_factory=list)
     allowed_in_video: bool = False
 
+class AdditionalSection(StrictBaseModel):
+    """An additional dossier section not covered by standard fields."""
+
+    section_name: str
+    summary: str | None = None
+    key_points: list[str] = Field(default_factory=list)
+    source_references: list[SourceReference] = Field(
+        default_factory=list
+    )
+
 
 class DossierMetadata(StrictBaseModel):
     """Metadata describing the dossier extraction process."""
@@ -229,4 +237,6 @@ class Dossier(StrictBaseModel):
     sensitive_information: list[SensitiveInformation] = Field(
         default_factory=list
     )
-    additional_sections: dict[str, Any] = Field(default_factory=dict)
+    additional_sections: list[AdditionalSection] = Field(
+    default_factory=list
+    )

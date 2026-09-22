@@ -28,3 +28,6 @@ mutagen>=1.47,<2.0
 # Testing
 pytest>=8.3,<10.0
 pytest-mock>=3.14,<4.0
+
+openai>=1.50,<3.0
+mutagen>=1.47,<2.0

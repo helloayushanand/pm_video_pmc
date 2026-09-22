@@ -66,10 +66,10 @@ def align_audio(run_directory):
 
     try:
         from app.services.alignment_service import (
-            ElevenLabsAlignmentService,
+            OpenAIAlignmentService,
         )
 
-        service = ElevenLabsAlignmentService()
+        service = OpenAIAlignmentService()
 
         result = service.align(
             audio_path=audio_path,
@@ -80,6 +80,13 @@ def align_audio(run_directory):
 
         words = result.get("words", [])
         phrases = result.get("phrases", [])
+
+        segments = result.get("segments", [])
+
+        save_json(
+            segments,
+            output_directory / "segments.json",
+        )
 
         save_json(
             words,
@@ -98,8 +105,10 @@ def align_audio(run_directory):
         )
 
         metadata = {
+            "provider": "openai",
             "word_count": len(words),
             "phrase_count": len(phrases),
+            "segment_count": len(segments),
             "audio_path": str(audio_path),
         }
 

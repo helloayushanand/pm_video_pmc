@@ -60,14 +60,14 @@ def build_argument_parser():
         "--input",
         help=(
             "Path to a candidate dossier PDF. "
-            "A new run will be created."
+            "A new pipeline run will be created."
         ),
     )
 
     source_group.add_argument(
         "--run-dir",
         help=(
-            "Path to an existing run directory. "
+            "Path to an existing pipeline run directory. "
             "Use this to continue or rerun pipeline stages."
         ),
     )
@@ -78,7 +78,7 @@ def build_argument_parser():
         default=None,
         help=(
             "Start from this pipeline step. "
-            "This option is intended for an existing run."
+            "Use this with an existing run."
         ),
     )
 
@@ -102,14 +102,21 @@ def build_argument_parser():
     parser.add_argument(
         "--model",
         default=settings.openai_model,
-        help="OpenAI model used for AI stages.",
+        help=(
+            "OpenAI model used for dossier extraction, "
+            "content selection, and storyboard generation. "
+            f"Default: {settings.openai_model}"
+        ),
     )
 
     parser.add_argument(
         "--render-dpi",
         type=int,
         default=settings.pdf_render_dpi,
-        help="PDF page rendering resolution.",
+        help=(
+            "Resolution used when rendering PDF pages. "
+            f"Default: {settings.pdf_render_dpi}"
+        ),
     )
 
     parser.add_argument(
@@ -120,7 +127,10 @@ def build_argument_parser():
             "auto",
         ],
         default="high",
-        help="OpenAI image-detail level.",
+        help=(
+            "OpenAI image-detail level used for dossier extraction. "
+            "Default: high"
+        ),
     )
 
     parser.add_argument(
@@ -142,28 +152,45 @@ def build_argument_parser():
             "detailed",
         ],
         default=settings.default_video_mode,
-        help="Preferred video-duration mode.",
+        help=(
+            "Preferred video-duration mode. "
+            f"Default: {settings.default_video_mode}"
+        ),
     )
 
     parser.add_argument(
         "--include-compensation",
         action="store_true",
         help=(
-            "Permit compensation in later internal "
-            "video-generation stages."
+            "Permit compensation information in later "
+            "internal video-generation stages."
         ),
     )
 
     parser.add_argument(
         "--exclude-availability",
         action="store_true",
-        help="Exclude candidate availability from video content.",
+        help=(
+            "Exclude candidate availability from video content."
+        ),
     )
 
     parser.add_argument(
-        "--voice-id",
-        default=settings.elevenlabs_voice_id,
-        help="ElevenLabs voice identifier.",
+        "--voice",
+        default=settings.openai_tts_voice,
+        help=(
+            "OpenAI text-to-speech voice. "
+            f"Default: {settings.openai_tts_voice}"
+        ),
+    )
+
+    parser.add_argument(
+        "--tts-model",
+        default=settings.openai_tts_model,
+        help=(
+            "OpenAI text-to-speech model. "
+            f"Default: {settings.openai_tts_model}"
+        ),
     )
 
     return parser
@@ -179,7 +206,7 @@ def normalise_step_name(step_name):
 
 
 def build_configuration(arguments):
-    """Create the configuration for a new pipeline run."""
+    """Create configuration for a new pipeline run."""
 
     return {
         "video_mode": arguments.video_mode,
@@ -192,21 +219,26 @@ def build_configuration(arguments):
         "pdf_render_dpi": arguments.render_dpi,
         "image_detail": arguments.image_detail,
         "openai_model": arguments.model,
-        "voice_id": arguments.voice_id,
+        "openai_tts_model": arguments.tts_model,
+        "openai_tts_voice": arguments.voice,
         "video_width": settings.video_width,
         "video_height": settings.video_height,
         "video_fps": settings.video_fps,
     }
 
 
-def resolve_execution_range(arguments, existing_run):
+def resolve_execution_range(
+    arguments,
+    existing_run,
+):
     """Determine which pipeline stages should execute."""
 
     if arguments.only_step:
-        step_name = normalise_step_name(
+        selected_step = normalise_step_name(
             arguments.only_step
         )
-        return [step_name]
+
+        return [selected_step]
 
     if existing_run:
         from_step = (
@@ -229,7 +261,9 @@ def resolve_execution_range(arguments, existing_run):
             "--from-step cannot occur after --to-step."
         )
 
-    return PIPELINE_STEPS[start_index : end_index + 1]
+    return PIPELINE_STEPS[
+        start_index : end_index + 1
+    ]
 
 
 def execute_step(
@@ -244,6 +278,12 @@ def execute_step(
     print(f"RUNNING: {step_name}")
     print("=" * 72)
     print()
+
+    if step_name == "prepare_document":
+        raise ValueError(
+            "The prepare_document step is handled automatically "
+            "when a new --input PDF is supplied."
+        )
 
     if step_name == "extract_dossier":
         return extract_dossier(
@@ -273,7 +313,8 @@ def execute_step(
     if step_name == "generate_audio":
         return generate_audio(
             run_directory=run_directory,
-            voice_id=arguments.voice_id,
+            voice=arguments.voice,
+            model=arguments.tts_model,
         )
 
     if step_name == "align_audio":
@@ -302,7 +343,7 @@ def execute_step(
 
 
 def print_run_summary(run_directory):
-    """Print a safe summary of the current run state."""
+    """Print a safe summary of the current pipeline run."""
 
     manager = RunManager(run_directory)
     state = manager.state
@@ -327,20 +368,22 @@ def print_run_summary(run_directory):
     print()
 
 
-def main():
-    """Run the local candidate video pipeline."""
-
-    parser = build_argument_parser()
-    arguments = parser.parse_args()
-
-    create_project_directories()
-    setup_logging(log_level=settings.log_level)
+def validate_arguments(
+    parser,
+    arguments,
+):
+    """Validate command-line argument combinations."""
 
     if arguments.max_pages is not None:
         if arguments.max_pages <= 0:
             parser.error(
                 "--max-pages must be greater than zero."
             )
+
+    if arguments.render_dpi <= 0:
+        parser.error(
+            "--render-dpi must be greater than zero."
+        )
 
     if arguments.input and arguments.from_step:
         parser.error(
@@ -359,8 +402,36 @@ def main():
                 "'prepare' or 'prepare_document'."
             )
 
-    existing_run = bool(arguments.run_dir)
+    if arguments.run_dir and arguments.only_step:
+        selected_step = normalise_step_name(
+            arguments.only_step
+        )
 
+        if selected_step == "prepare_document":
+            parser.error(
+                "The prepare_document step requires --input, "
+                "not --run-dir."
+            )
+
+
+def main():
+    """Run the local candidate video pipeline."""
+
+    parser = build_argument_parser()
+    arguments = parser.parse_args()
+
+    validate_arguments(
+        parser=parser,
+        arguments=arguments,
+    )
+
+    create_project_directories()
+
+    setup_logging(
+        log_level=settings.log_level
+    )
+
+    existing_run = bool(arguments.run_dir)
     run_directory = None
 
     try:
@@ -372,10 +443,13 @@ def main():
         if arguments.input:
             if "prepare_document" not in steps_to_run:
                 raise ValueError(
-                    "A new input requires the prepare_document step."
+                    "A new input requires the "
+                    "prepare_document step."
                 )
 
-            configuration = build_configuration(arguments)
+            configuration = build_configuration(
+                arguments
+            )
 
             run_directory = prepare_document(
                 input_file=arguments.input,
@@ -396,15 +470,18 @@ def main():
 
             if not run_directory.exists():
                 raise FileNotFoundError(
-                    f"Run directory not found: {run_directory}"
+                    f"Run directory not found: "
+                    f"{run_directory}"
                 )
 
             if not run_directory.is_dir():
                 raise ValueError(
-                    f"Run path is not a directory: {run_directory}"
+                    f"Run path is not a directory: "
+                    f"{run_directory}"
                 )
 
             RunManager(run_directory)
+
             remaining_steps = steps_to_run
 
         for step_name in remaining_steps:
@@ -414,13 +491,27 @@ def main():
                 arguments=arguments,
             )
 
-        print_run_summary(run_directory)
+        print_run_summary(
+            run_directory
+        )
+
         return 0
 
     except KeyboardInterrupt:
         print()
-        print("Pipeline interrupted by the user.")
+        print("=" * 72)
+        print("PIPELINE INTERRUPTED")
+        print("=" * 72)
+        print(
+            "Pipeline execution was interrupted by the user."
+        )
+
+        if run_directory is not None:
+            print(f"Run folder: {run_directory}")
+
+        print("=" * 72)
         print()
+
         return 130
 
     except Exception as error:
@@ -428,7 +519,9 @@ def main():
         print("=" * 72)
         print("PIPELINE FAILED")
         print("=" * 72)
-        print(f"Error type: {type(error).__name__}")
+        print(
+            f"Error type: {type(error).__name__}"
+        )
         print(f"Details:    {error}")
 
         if run_directory is not None:

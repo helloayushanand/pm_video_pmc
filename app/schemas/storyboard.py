@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -49,14 +48,39 @@ class VisualElementType(str, Enum):
     CONFIDENTIALITY_MARKER = "confidentiality_marker"
 
 
+class PronunciationHint(StrictBaseModel):
+    """Pronunciation guidance for one word or phrase."""
+
+    text: str
+    pronunciation: str
+
+
+class VisualMetadataItem(StrictBaseModel):
+    """One renderer-safe metadata property."""
+
+    key: str
+    value: str
+
+
 class VoiceoverSegment(StrictBaseModel):
     """One segment of narration associated with a scene."""
 
     segment_id: str
     text: str
-    estimated_duration_seconds: float | None = Field(default=None, gt=0)
-    pronunciation_hints: dict[str, str] = Field(default_factory=dict)
-    pause_after_seconds: float = Field(default=0.0, ge=0)
+
+    estimated_duration_seconds: float | None = Field(
+        default=None,
+        gt=0,
+    )
+
+    pronunciation_hints: list[PronunciationHint] = Field(
+        default_factory=list
+    )
+
+    pause_after_seconds: float = Field(
+        default=0.0,
+        ge=0,
+    )
 
 
 class VisualElement(StrictBaseModel):
@@ -64,13 +88,21 @@ class VisualElement(StrictBaseModel):
 
     element_id: str
     element_type: VisualElementType
+
     content: str | None = None
     value: str | None = None
     label: str | None = None
     asset_id: str | None = None
     animation: str | None = None
-    display_order: int = Field(default=1, ge=1)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    display_order: int = Field(
+        default=1,
+        ge=1,
+    )
+
+    metadata: list[VisualMetadataItem] = Field(
+        default_factory=list
+    )
 
 
 class StoryboardScene(StrictBaseModel):
@@ -80,20 +112,34 @@ class StoryboardScene(StrictBaseModel):
     scene_type: SceneType
     purpose: str
     variant: str = "default"
-    estimated_duration_seconds: float = Field(gt=0)
-    voiceover_segments: list[VoiceoverSegment] = Field(default_factory=list)
-    visual_elements: list[VisualElement] = Field(default_factory=list)
+
+    estimated_duration_seconds: float = Field(
+        gt=0
+    )
+
+    voiceover_segments: list[VoiceoverSegment] = Field(
+        default_factory=list
+    )
+
+    visual_elements: list[VisualElement] = Field(
+        default_factory=list
+    )
+
     transition_in: str = "fade"
     transition_out: str = "fade"
     background_variant: str = "default"
-    notes: list[str] = Field(default_factory=list)
+
+    notes: list[str] = Field(
+        default_factory=list
+    )
 
     @property
-    def complete_voiceover(self) -> str:
+    def complete_voiceover(self):
         """Return all scene narration as one string."""
 
         return " ".join(
-            segment.text for segment in self.voiceover_segments
+            segment.text
+            for segment in self.voiceover_segments
         ).strip()
 
 
@@ -104,27 +150,43 @@ class Storyboard(StrictBaseModel):
     title: str
     candidate_name: str
     video_mode: str = "automatic"
-    target_duration_seconds: float = Field(default=45.0, gt=0)
-    scenes: list[StoryboardScene] = Field(min_length=1)
+
+    target_duration_seconds: float = Field(
+        default=45.0,
+        gt=0,
+    )
+
+    scenes: list[StoryboardScene] = Field(
+        min_length=1
+    )
+
     global_voice: str | None = None
     tone: str = "premium, professional, concise"
     branding_theme: str = "positive_moves_premium_v1"
     confidential: bool = True
-    generation_notes: list[str] = Field(default_factory=list)
+
+    generation_notes: list[str] = Field(
+        default_factory=list
+    )
 
     @model_validator(mode="after")
-    def validate_unique_scene_ids(self) -> "Storyboard":
-        """Ensure scene identifiers are unique."""
+    def validate_unique_scene_ids(self):
+        """Ensure that every storyboard scene ID is unique."""
 
-        scene_ids = [scene.scene_id for scene in self.scenes]
+        scene_ids = [
+            scene.scene_id
+            for scene in self.scenes
+        ]
 
         if len(scene_ids) != len(set(scene_ids)):
-            raise ValueError("Storyboard scene IDs must be unique.")
+            raise ValueError(
+                "Storyboard scene IDs must be unique."
+            )
 
         return self
 
     @property
-    def estimated_total_duration_seconds(self) -> float:
+    def estimated_total_duration_seconds(self):
         """Return the sum of estimated scene durations."""
 
         return round(
@@ -136,7 +198,7 @@ class Storyboard(StrictBaseModel):
         )
 
     @property
-    def complete_voiceover(self) -> str:
+    def complete_voiceover(self):
         """Return the complete storyboard narration."""
 
         return " ".join(

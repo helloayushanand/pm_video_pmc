@@ -1,11 +1,9 @@
-﻿"""ElevenLabs forced-alignment service."""
-
-from __future__ import annotations
+﻿"""OpenAI transcription and timestamp service."""
 
 import re
 from pathlib import Path
 
-import httpx
+from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import settings
@@ -16,32 +14,32 @@ logger = get_logger(__name__)
 
 
 class AlignmentServiceError(Exception):
-    """Base exception for audio-alignment errors."""
+    """Base exception for timestamp extraction errors."""
 
 
 class AlignmentConfigurationError(AlignmentServiceError):
-    """Raised when ElevenLabs configuration is incomplete."""
+    """Raised when OpenAI configuration is incomplete."""
 
 
-class ElevenLabsAlignmentService:
-    """Align narration audio against its exact transcript."""
-
-    ALIGNMENT_URL = (
-        "https://api.elevenlabs.io/v1/forced-alignment"
-    )
+class OpenAIAlignmentService:
+    """Generate word and phrase timestamps using OpenAI Whisper."""
 
     def __init__(
         self,
         api_key=None,
-        timeout_seconds=300,
+        model=None,
     ):
-        self.api_key = api_key or settings.elevenlabs_api_key
-        self.timeout_seconds = timeout_seconds
+        self.api_key = api_key or settings.openai_api_key
+        self.model = (
+            model or settings.openai_transcription_model
+        )
 
         if not self.api_key:
             raise AlignmentConfigurationError(
-                "ELEVENLABS_API_KEY is not configured in .env."
+                "OPENAI_API_KEY is not configured in .env."
             )
+
+        self.client = OpenAI(api_key=self.api_key)
 
     @retry(
         wait=wait_exponential(
@@ -55,99 +53,101 @@ class ElevenLabsAlignmentService:
     def align(
         self,
         audio_path,
-        transcript,
+        transcript=None,
     ):
-        """Return word and phrase timestamps."""
+        """Transcribe generated audio with word-level timestamps."""
 
         source_path = Path(audio_path).resolve()
-        clean_transcript = str(transcript).strip()
 
         if not source_path.exists():
             raise FileNotFoundError(
                 f"Audio file not found: {source_path}"
             )
 
-        if not clean_transcript:
-            raise AlignmentServiceError(
-                "Alignment transcript is empty."
-            )
-
-        headers = {
-            "xi-api-key": self.api_key,
-        }
-
         logger.info(
-            "Submitting voiceover for forced alignment."
+            "Requesting OpenAI word timestamps using %s.",
+            self.model,
         )
 
-        with source_path.open("rb") as audio_handle:
-            files = {
-                "file": (
-                    source_path.name,
-                    audio_handle,
-                    "audio/mpeg",
-                )
-            }
-
-            data = {
-                "text": clean_transcript,
-            }
-
-            with httpx.Client(
-                timeout=self.timeout_seconds
-            ) as client:
-                response = client.post(
-                    self.ALIGNMENT_URL,
-                    headers=headers,
-                    files=files,
-                    data=data,
+        try:
+            with source_path.open("rb") as audio_file:
+                response = self.client.audio.transcriptions.create(
+                    model=self.model,
+                    file=audio_file,
+                    response_format="verbose_json",
+                    timestamp_granularities=[
+                        "word",
+                        "segment",
+                    ],
+                    prompt=(
+                        transcript[:1000]
+                        if transcript
+                        else None
+                    ),
                 )
 
-        if response.status_code >= 400:
+        except Exception as error:
             raise AlignmentServiceError(
-                "ElevenLabs alignment failed with status "
-                f"{response.status_code}: {response.text}"
-            )
+                f"OpenAI transcription failed: {error}"
+            ) from error
 
-        provider_result = response.json()
+        response_data = (
+            response.model_dump(mode="json")
+            if hasattr(response, "model_dump")
+            else dict(response)
+        )
 
         words = self._normalise_words(
-            provider_result.get("words", [])
+            response_data.get("words", [])
+        )
+
+        segments = self._normalise_segments(
+            response_data.get("segments", [])
         )
 
         phrases = self._create_phrases(words)
 
         logger.info(
-            "Alignment completed with %s words and %s phrases.",
+            "Timestamp extraction completed with "
+            "%s words, %s segments and %s phrases.",
             len(words),
+            len(segments),
             len(phrases),
         )
 
         return {
-            "provider": "elevenlabs",
-            "words": words,
-            "phrases": phrases,
-            "characters": provider_result.get(
-                "characters",
-                [],
+            "provider": "openai",
+            "model": self.model,
+            "transcribed_text": response_data.get(
+                "text",
+                "",
             ),
-            "loss": provider_result.get("loss"),
+            "language": response_data.get("language"),
+            "duration": response_data.get("duration"),
+            "words": words,
+            "segments": segments,
+            "phrases": phrases,
+            "raw_response": response_data,
         }
 
     @staticmethod
     def _normalise_words(provider_words):
-        """Normalise provider timestamps."""
+        """Normalise OpenAI word timestamp records."""
 
         words = []
 
         for index, word in enumerate(provider_words):
-            text = str(word.get("text", "")).strip()
-
-            if not text:
-                continue
+            text = str(
+                word.get("word")
+                or word.get("text")
+                or ""
+            ).strip()
 
             start = word.get("start")
             end = word.get("end")
+
+            if not text:
+                continue
 
             if start is None or end is None:
                 continue
@@ -162,11 +162,44 @@ class ElevenLabsAlignmentService:
                         float(end) - float(start),
                         3,
                     ),
-                    "loss": word.get("loss"),
                 }
             )
 
         return words
+
+    @staticmethod
+    def _normalise_segments(provider_segments):
+        """Normalise OpenAI segment timestamp records."""
+
+        segments = []
+
+        for index, segment in enumerate(provider_segments):
+            text = str(
+                segment.get("text", "")
+            ).strip()
+
+            start = segment.get("start")
+            end = segment.get("end")
+
+            if start is None or end is None:
+                continue
+
+            segments.append(
+                {
+                    "segment_id": (
+                        f"segment_{index + 1:03d}"
+                    ),
+                    "text": text,
+                    "start": float(start),
+                    "end": float(end),
+                    "duration": round(
+                        float(end) - float(start),
+                        3,
+                    ),
+                }
+            )
+
+        return segments
 
     @staticmethod
     def _create_phrases(
@@ -174,7 +207,7 @@ class ElevenLabsAlignmentService:
         maximum_words=8,
         maximum_duration=4.0,
     ):
-        """Group aligned words into animation-friendly phrases."""
+        """Group word timings into visual animation phrases."""
 
         if not words:
             return []
@@ -196,21 +229,13 @@ class ElevenLabsAlignmentService:
                 )
             )
 
-            reached_word_limit = (
-                len(current_words) >= maximum_words
-            )
-
-            reached_duration_limit = (
-                phrase_duration >= maximum_duration
-            )
-
             if (
                 ends_sentence
-                or reached_word_limit
-                or reached_duration_limit
+                or len(current_words) >= maximum_words
+                or phrase_duration >= maximum_duration
             ):
                 phrases.append(
-                    ElevenLabsAlignmentService._make_phrase(
+                    OpenAIAlignmentService._make_phrase(
                         current_words,
                         len(phrases),
                     )
@@ -220,7 +245,7 @@ class ElevenLabsAlignmentService:
 
         if current_words:
             phrases.append(
-                ElevenLabsAlignmentService._make_phrase(
+                OpenAIAlignmentService._make_phrase(
                     current_words,
                     len(phrases),
                 )
@@ -230,20 +255,25 @@ class ElevenLabsAlignmentService:
 
     @staticmethod
     def _make_phrase(words, phrase_index):
-        """Create one phrase record."""
+        """Create one phrase-level timestamp object."""
 
         start = words[0]["start"]
         end = words[-1]["end"]
 
         return {
-            "phrase_id": f"phrase_{phrase_index + 1:03d}",
+            "phrase_id": (
+                f"phrase_{phrase_index + 1:03d}"
+            ),
             "text": " ".join(
                 word["text"]
                 for word in words
             ),
             "start": start,
             "end": end,
-            "duration": round(end - start, 3),
+            "duration": round(
+                end - start,
+                3,
+            ),
             "start_word_index": words[0]["index"],
             "end_word_index": words[-1]["index"],
         }

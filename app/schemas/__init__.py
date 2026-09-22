@@ -1,6 +1,7 @@
 ﻿"""Pydantic schemas used throughout the candidate video pipeline."""
 
 from app.schemas.dossier import (
+    AdditionalSection,
     Assessment,
     Availability,
     CandidateProfile,
@@ -21,12 +22,16 @@ from app.schemas.render_spec import (
     RenderVideoSettings,
     ThemeSettings,
 )
+
 from app.schemas.storyboard import (
+    PronunciationHint,
     Storyboard,
     StoryboardScene,
     VisualElement,
+    VisualMetadataItem,
     VoiceoverSegment,
 )
+
 from app.schemas.video_content import (
     CandidateIntroduction,
     SelectedCareerMilestone,
@@ -35,6 +40,10 @@ from app.schemas.video_content import (
 )
 
 __all__ = [
+    "PronunciationHint",
+    "VisualMetadataItem",
+    "AdditionalSection",
+    "Assessment",
     "Assessment",
     "AudioTrack",
     "Availability",

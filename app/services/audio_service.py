@@ -1,11 +1,9 @@
-﻿"""ElevenLabs text-to-speech service."""
-
-from __future__ import annotations
+﻿"""OpenAI text-to-speech service."""
 
 from pathlib import Path
 
-import httpx
 from mutagen.mp3 import MP3
+from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import settings
@@ -20,37 +18,32 @@ class AudioServiceError(Exception):
 
 
 class AudioConfigurationError(AudioServiceError):
-    """Raised when ElevenLabs configuration is incomplete."""
+    """Raised when OpenAI audio configuration is incomplete."""
 
 
-class ElevenLabsAudioService:
-    """Generate voiceover audio using ElevenLabs."""
-
-    API_BASE_URL = "https://api.elevenlabs.io/v1"
+class OpenAIAudioService:
+    """Generate professional narration using OpenAI TTS."""
 
     def __init__(
         self,
         api_key=None,
-        voice_id=None,
-        model_id=None,
-        timeout_seconds=180,
+        model=None,
+        voice=None,
+        response_format=None,
     ):
-        self.api_key = api_key or settings.elevenlabs_api_key
-        self.voice_id = voice_id or settings.elevenlabs_voice_id
-        self.model_id = (
-            model_id or settings.elevenlabs_model_id
+        self.api_key = api_key or settings.openai_api_key
+        self.model = model or settings.openai_tts_model
+        self.voice = voice or settings.openai_tts_voice
+        self.response_format = (
+            response_format or settings.openai_tts_format
         )
-        self.timeout_seconds = timeout_seconds
 
         if not self.api_key:
             raise AudioConfigurationError(
-                "ELEVENLABS_API_KEY is not configured in .env."
+                "OPENAI_API_KEY is not configured in .env."
             )
 
-        if not self.voice_id:
-            raise AudioConfigurationError(
-                "ELEVENLABS_VOICE_ID is not configured in .env."
-            )
+        self.client = OpenAI(api_key=self.api_key)
 
     @retry(
         wait=wait_exponential(
@@ -65,12 +58,9 @@ class ElevenLabsAudioService:
         self,
         text,
         output_path,
-        stability=0.55,
-        similarity_boost=0.75,
-        style=0.1,
-        use_speaker_boost=True,
+        instructions=None,
     ):
-        """Generate an MP3 voiceover from the supplied transcript."""
+        """Generate narration and save it as an audio file."""
 
         transcript = str(text).strip()
 
@@ -80,54 +70,41 @@ class ElevenLabsAudioService:
             )
 
         destination = Path(output_path).resolve()
+
         destination.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        url = (
-            f"{self.API_BASE_URL}/text-to-speech/"
-            f"{self.voice_id}"
+        speech_instructions = instructions or (
+            "Speak in a polished, measured, professional "
+            "business-news style. Maintain a confident but "
+            "neutral tone. Use clear pronunciation for company "
+            "names, job titles, percentages, currencies and large "
+            "numbers. Use brief natural pauses between ideas. "
+            "Do not sound promotional or overly enthusiastic."
         )
-
-        headers = {
-            "xi-api-key": self.api_key,
-            "Accept": "audio/mpeg",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "text": transcript,
-            "model_id": self.model_id,
-            "voice_settings": {
-                "stability": stability,
-                "similarity_boost": similarity_boost,
-                "style": style,
-                "use_speaker_boost": use_speaker_boost,
-            },
-        }
 
         logger.info(
-            "Generating ElevenLabs voiceover using voice %s.",
-            self.voice_id,
+            "Generating OpenAI narration using model %s and voice %s.",
+            self.model,
+            self.voice,
         )
 
-        with httpx.Client(
-            timeout=self.timeout_seconds
-        ) as client:
-            response = client.post(
-                url,
-                headers=headers,
-                json=payload,
-            )
+        try:
+            with self.client.audio.speech.with_streaming_response.create(
+                model=self.model,
+                voice=self.voice,
+                input=transcript,
+                instructions=speech_instructions,
+                response_format=self.response_format,
+            ) as response:
+                response.stream_to_file(destination)
 
-        if response.status_code >= 400:
+        except Exception as error:
             raise AudioServiceError(
-                "ElevenLabs TTS request failed with status "
-                f"{response.status_code}: {response.text}"
-            )
-
-        destination.write_bytes(response.content)
+                f"OpenAI TTS generation failed: {error}"
+            ) from error
 
         if not destination.exists():
             raise AudioServiceError(
@@ -142,26 +119,33 @@ class ElevenLabsAudioService:
         try:
             audio = MP3(destination)
             duration_seconds = float(audio.info.length)
-            bitrate = getattr(audio.info, "bitrate", None)
+            bitrate = getattr(
+                audio.info,
+                "bitrate",
+                None,
+            )
             sample_rate = getattr(
                 audio.info,
                 "sample_rate",
                 None,
             )
+
         except Exception as error:
             raise AudioServiceError(
                 f"Generated MP3 could not be inspected: {error}"
             ) from error
 
         logger.info(
-            "Voiceover generated successfully. Duration: %.2f seconds.",
+            "OpenAI narration created successfully. "
+            "Duration: %.2f seconds.",
             duration_seconds,
         )
 
         return {
-            "provider": "elevenlabs",
-            "voice_id": self.voice_id,
-            "model_id": self.model_id,
+            "provider": "openai",
+            "model": self.model,
+            "voice": self.voice,
+            "response_format": self.response_format,
             "output_path": str(destination),
             "file_size_bytes": destination.stat().st_size,
             "duration_seconds": round(
@@ -171,4 +155,5 @@ class ElevenLabsAudioService:
             "bitrate": bitrate,
             "sample_rate": sample_rate,
             "character_count": len(transcript),
+            "ai_generated_voice": True,
         }
