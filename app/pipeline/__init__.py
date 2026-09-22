@@ -11,4 +11,5 @@ PIPELINE_STEPS = [
     "compile_render_spec",
     "render_video",
     "run_quality_checks",
+    "calculate_costs",
 ]

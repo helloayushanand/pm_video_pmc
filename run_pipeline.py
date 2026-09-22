@@ -17,7 +17,7 @@ from app.pipeline.step_09_render_video import render_video
 from app.pipeline.step_10_run_quality_checks import run_quality_checks
 from app.utils.logging import setup_logging
 from app.utils.run_manager import PIPELINE_STEPS, RunManager
-
+from app.pipeline.step_11_calculate_costs import calculate_costs
 
 STEP_ALIASES = {
     "prepare": "prepare_document",
@@ -40,6 +40,9 @@ STEP_ALIASES = {
     "render_video": "render_video",
     "quality": "run_quality_checks",
     "run_quality_checks": "run_quality_checks",
+    "cost": "calculate_costs",
+    "costs": "calculate_costs",
+    "calculate_costs": "calculate_costs",
 }
 
 
@@ -250,7 +253,7 @@ def resolve_execution_range(
 
     to_step = (
         normalise_step_name(arguments.to_step)
-        or "run_quality_checks"
+        or "calculate_costs"
     )
 
     start_index = PIPELINE_STEPS.index(from_step)
@@ -334,6 +337,11 @@ def execute_step(
 
     if step_name == "run_quality_checks":
         return run_quality_checks(
+            run_directory
+        )
+
+    if step_name == "calculate_costs":
+        return calculate_costs(
             run_directory
         )
 

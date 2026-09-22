@@ -14,8 +14,15 @@ from app.utils.run_manager import (
     generate_run_id,
 )
 
+from app.services.cost_service import (
+    CostService,
+    CostServiceError,
+)
+
 __all__ = [
     "RunManager",
+    "CostService",
+    "CostServiceError",
     "calculate_sha256",
     "copy_file",
     "create_run",

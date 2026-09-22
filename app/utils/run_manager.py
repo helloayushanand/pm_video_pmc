@@ -23,6 +23,7 @@ PIPELINE_STEPS = [
     "compile_render_spec",
     "render_video",
     "run_quality_checks",
+    "calculate_costs",
 ]
 
 RUN_SUBDIRECTORIES = {
@@ -37,6 +38,7 @@ RUN_SUBDIRECTORIES = {
     "render_spec": "08_render_spec",
     "video": "09_video",
     "quality": "10_quality",
+    "costs": "11_costs",
     "logs": "logs",
 }
 
