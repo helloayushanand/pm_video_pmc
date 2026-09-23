@@ -21,6 +21,8 @@ PIPELINE_STEPS = [
     "generate_creative_plan",
     "prepare_artifacts",
     "generate_artifacts",
+    "generate_components",
+    "review_components",
     "generate_audio",
     "align_audio",
     "compile_render_spec",

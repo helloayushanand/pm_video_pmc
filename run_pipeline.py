@@ -13,6 +13,8 @@ from app.pipeline.step_05_generate_storyboard import generate_storyboard
 from app.pipeline.step_05b_generate_creative_plan import generate_creative_plan
 from app.pipeline.step_05c_prepare_artifacts import prepare_artifacts
 from app.pipeline.step_05d_generate_artifacts import generate_artifacts
+from app.pipeline.step_05e_generate_components import generate_components
+from app.pipeline.step_05g_review_components import review_components
 from app.pipeline.step_06_generate_audio import generate_audio
 from app.pipeline.step_07_align_audio import align_audio
 from app.pipeline.step_08_compile_render_spec import compile_render_spec
@@ -40,6 +42,10 @@ STEP_ALIASES = {
     "prepare_artifacts": "prepare_artifacts",
     "generate_artifacts": "generate_artifacts",
     "artifact_generation": "generate_artifacts",
+    "components": "generate_components",
+    "generate_components": "generate_components",
+    "component_review": "review_components",
+    "review_components": "review_components",
     "audio": "generate_audio",
     "generate_audio": "generate_audio",
     "alignment": "align_audio",
@@ -338,6 +344,18 @@ def execute_step(
         return generate_artifacts(
             run_directory=run_directory,
             generate_images=False,
+        )
+
+    if step_name == "generate_components":
+        return generate_components(
+            run_directory=run_directory,
+            model=arguments.model,
+            max_scenes=2,
+        )
+
+    if step_name == "review_components":
+        return review_components(
+            run_directory=run_directory,
         )
 
     if step_name == "generate_audio":
