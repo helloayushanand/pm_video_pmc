@@ -18,7 +18,67 @@ CHECK
 
 Do not infer facts that are not visible. Do not identify people. Do not infer emotions, identity, gender, race, or ethnicity.
 
-APPROVAL
-Approve only when no high-severity issue remains and the scene is suitable for preview integration.
+APPROVAL POLICY
 
-Return only the required VisualQAResult structured output.
+Classify each issue as critical, high, medium, or low.
+
+Set blocking=true only when the issue involves:
+- factual inaccuracy
+- prohibited or unsafe content
+- missing mandatory confidentiality treatment
+- unreadable or clipped essential text
+- severe overlap
+- severe contrast failure
+- content outside safe bounds
+- missing approved artifact that makes the scene misleading
+- a rendering defect
+
+Medium and low aesthetic issues are warnings by default.
+
+Do not reject a scene solely because:
+- the layout differs from a preference in the brief
+- an optional visual element is redundant
+- spacing or balance could be improved
+- a stylistic alternative might look better
+- a non-essential label is duplicated but remains readable
+
+Approve the scene when:
+- no blocking issue exists
+- overall_score is at least 0.70
+- readability_score is at least 0.70
+- deterministic frame checks have passed
+
+Use approved_with_warnings when the scene is usable but contains
+non-blocking medium or low issues.
+
+ISSUE OUTPUT
+
+Every issue must include:
+- issue_id
+- category
+- severity
+- blocking
+- frame_label
+- description
+- recommended_change
+
+Set blocking=true only for:
+- factual inaccuracies
+- prohibited or unsafe content
+- missing mandatory confidentiality treatment
+- unreadable or clipped essential text
+- severe overlap
+- severe contrast failure
+- content outside safe bounds
+- rendering defects
+- misleading representation
+
+Set blocking=false for ordinary aesthetic concerns such as:
+- duplicate but readable labels
+- minor imbalance
+- optional polish
+- stylistic preferences
+- moderate spacing concerns
+- non-essential visual repetition
+
+Medium and low aesthetic issues are warnings by default.

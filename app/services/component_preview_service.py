@@ -177,7 +177,92 @@ class ComponentPreviewService:
             visual_result = self._run_visual_qa(scene_input, rendered)
             save_json(visual_result.model_dump(mode="json"), preview_dir / "visual_qa.json")
 
-        visual_approved = bool(visual_result and visual_result.approved)
+        blocking_categories = {
+            "factual_integrity",
+            "factual_integrity_error",
+            "prohibited_content",
+            "security",
+            "privacy",
+            "missing_confidentiality",
+            "render_failure",
+            "unreadable_text",
+            "text_clipping",
+            "severe_overlap",
+        }
+
+        blocking_issues = []
+
+        for issue in visual_result.issues:
+            normalized_category = (
+                issue.category
+                .strip()
+                .lower()
+                .replace("-", "_")
+                .replace(" ", "_")
+            )
+
+            severity = (
+                issue.severity
+                .strip()
+                .lower()
+            )
+
+            explicitly_blocking = getattr(
+                issue,
+                "blocking",
+                False,
+            )
+
+            severity_blocking = (
+                severity
+                in {
+                    "critical",
+                    "high",
+                }
+            )
+
+            category_blocking = (
+                normalized_category
+                in blocking_categories
+            )
+
+            if (
+                explicitly_blocking
+                or severity_blocking
+                or category_blocking
+            ):
+                blocking_issues.append(
+                    issue
+                )
+
+        visual_approved = (
+            not blocking_issues
+            and visual_result.overall_score >= 0.70
+            and visual_result.readability_score >= 0.70
+        )
+
+        warning_count = (
+            len(visual_result.issues)
+            - len(blocking_issues)
+        )
+
+        visual_result.approved = (
+            visual_approved
+        )
+
+        visual_result.approved_with_warnings = (
+            visual_approved
+            and warning_count > 0
+        )
+
+        visual_result.blocking_issue_count = (
+            len(blocking_issues)
+        )
+
+        visual_result.warning_count = (
+            warning_count
+        )       
+
         if not deterministic.valid or errors:
             status = "failed"
         elif run_visual_qa and not visual_approved:

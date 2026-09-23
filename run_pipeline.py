@@ -18,6 +18,9 @@ from app.pipeline.step_05g_review_components import review_components
 from app.pipeline.step_05h_compile_components import compile_components
 from app.pipeline.step_05i_repair_compiler_errors import repair_compiler_errors
 from app.pipeline.step_05j_preview_components import preview_components
+from app.pipeline.step_05k_publish_dynamic_components import publish_dynamic_components
+from app.pipeline.step_09b_render_dynamic_video import render_dynamic_video
+from app.pipeline.step_10b_final_dynamic_video_qa import final_dynamic_video_qa
 from app.pipeline.step_06_generate_audio import generate_audio
 from app.pipeline.step_07_align_audio import align_audio
 from app.pipeline.step_08_compile_render_spec import compile_render_spec
@@ -55,6 +58,12 @@ STEP_ALIASES = {
     "repair_compiler_errors": "repair_compiler_errors",
     "component_preview": "preview_components",
     "preview_components": "preview_components",
+    "publish_dynamic": "publish_dynamic_components",
+    "publish_dynamic_components": "publish_dynamic_components",
+    "dynamic_video": "render_dynamic_video",
+    "render_dynamic_video": "render_dynamic_video",
+    "final_video_qa": "final_dynamic_video_qa",
+    "final_dynamic_video_qa": "final_dynamic_video_qa",
     "audio": "generate_audio",
     "generate_audio": "generate_audio",
     "alignment": "align_audio",
@@ -387,6 +396,25 @@ def execute_step(
             model=arguments.model,
             run_visual_qa=True,
             timeout_seconds=180,
+        )
+
+    if step_name == "publish_dynamic_components":
+        return publish_dynamic_components(
+            run_directory=run_directory,
+        )
+
+    if step_name == "render_dynamic_video":
+        return render_dynamic_video(
+            run_directory=run_directory,
+            timeout_seconds=900,
+        )
+
+    if step_name == "final_dynamic_video_qa":
+        return final_dynamic_video_qa(
+            run_directory=run_directory,
+            model=arguments.model,
+            run_cohesion_qa=True,
+            timeout_seconds=300,
         )
 
     if step_name == "generate_audio":

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "run_id": "run_20260922_143426_7547f974",
+  "components": [
+    {
+      "scene_id": "intro",
+      "component_name": "IntroEditorialStack",
+      "source_file": "C:\\Users\\Ayush\\Desktop\\pmc_code\\pm_video_poc\\runs\\run_20260922_143426_7547f974\\05d_generated_components\\source\\intro_IntroEditorialStack.tsx",
+      "source_sha256": "89c0b5646bbf411d530d740e9e94766d9e3c74d1ae5774c0b6abe93b5da0ed7f",
+      "published_source": "C:\\Users\\Ayush\\Desktop\\pmc_code\\pm_video_poc\\renderer\\remotion-project\\src\\generated-runs\\run_20260922_143426_7547f974\\components\\intro_IntroEditorialStack.tsx",
+      "published_sha256": "5c7de0dca4843323b569a653ad44ad0cd01f4c910e8d74c9af5edfb64b1f2172",
+      "fallback_component": "StackedTypographyIntro",
+      "visual_approved": true,
+      "compile_status": "compiled"
+    }
+  ],
+  "artifact_manifest_sha256": "99f3789b4fc1a6d40e51458f184a0556331e3a8d3e9ce10df26302c681731f67"
+}
