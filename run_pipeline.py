@@ -17,6 +17,7 @@ from app.pipeline.step_05e_generate_components import generate_components
 from app.pipeline.step_05g_review_components import review_components
 from app.pipeline.step_05h_compile_components import compile_components
 from app.pipeline.step_05i_repair_compiler_errors import repair_compiler_errors
+from app.pipeline.step_05j_preview_components import preview_components
 from app.pipeline.step_06_generate_audio import generate_audio
 from app.pipeline.step_07_align_audio import align_audio
 from app.pipeline.step_08_compile_render_spec import compile_render_spec
@@ -52,6 +53,8 @@ STEP_ALIASES = {
     "component_compilation": "compile_components",
     "compiler_repair": "repair_compiler_errors",
     "repair_compiler_errors": "repair_compiler_errors",
+    "component_preview": "preview_components",
+    "preview_components": "preview_components",
     "audio": "generate_audio",
     "generate_audio": "generate_audio",
     "alignment": "align_audio",
@@ -376,6 +379,14 @@ def execute_step(
             model=arguments.model,
             max_attempts=2,
             timeout_seconds=120,
+        )
+
+    if step_name == "preview_components":
+        return preview_components(
+            run_directory=run_directory,
+            model=arguments.model,
+            run_visual_qa=True,
+            timeout_seconds=180,
         )
 
     if step_name == "generate_audio":

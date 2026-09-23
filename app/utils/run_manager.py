@@ -25,6 +25,7 @@ PIPELINE_STEPS = [
     "review_components",
     "compile_components",
     "repair_compiler_errors",
+    "preview_components",
     "generate_audio",
     "align_audio",
     "compile_render_spec",
