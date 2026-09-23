@@ -116,3 +116,7 @@ desktop.ini
 `
 
 app/pricing.json
+
+# Generated component compilation workspaces
+renderer/remotion-project/.phase5_workspaces/
+renderer/remotion-project/.phase5_repair_workspaces/

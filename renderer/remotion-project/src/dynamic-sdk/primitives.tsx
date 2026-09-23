@@ -292,10 +292,11 @@ React.FC<SplitLayoutProps> = ({
 
 
 type TextProps = {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   theme: DynamicTheme;
   align?: HorizontalAlignment;
   maxWidth?: number;
+  role?: React.AriaRole;
   style?: React.CSSProperties;
 };
 
@@ -306,6 +307,7 @@ React.FC<TextProps> = ({
   theme,
   align = "left",
   maxWidth,
+  role,
   style,
 }) =>
   React.createElement(
@@ -333,6 +335,7 @@ React.FC<TextProps> = ({
   theme,
   align = "left",
   maxWidth = 1400,
+  role,
   style,
 }) =>
   React.createElement(
@@ -364,6 +367,7 @@ React.FC<TextProps> = ({
   theme,
   align = "left",
   maxWidth = 1250,
+  role,
   style,
 }) =>
   React.createElement(

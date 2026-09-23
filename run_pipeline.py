@@ -15,6 +15,8 @@ from app.pipeline.step_05c_prepare_artifacts import prepare_artifacts
 from app.pipeline.step_05d_generate_artifacts import generate_artifacts
 from app.pipeline.step_05e_generate_components import generate_components
 from app.pipeline.step_05g_review_components import review_components
+from app.pipeline.step_05h_compile_components import compile_components
+from app.pipeline.step_05i_repair_compiler_errors import repair_compiler_errors
 from app.pipeline.step_06_generate_audio import generate_audio
 from app.pipeline.step_07_align_audio import align_audio
 from app.pipeline.step_08_compile_render_spec import compile_render_spec
@@ -46,6 +48,10 @@ STEP_ALIASES = {
     "generate_components": "generate_components",
     "component_review": "review_components",
     "review_components": "review_components",
+    "compile_components": "compile_components",
+    "component_compilation": "compile_components",
+    "compiler_repair": "repair_compiler_errors",
+    "repair_compiler_errors": "repair_compiler_errors",
     "audio": "generate_audio",
     "generate_audio": "generate_audio",
     "alignment": "align_audio",
@@ -356,6 +362,20 @@ def execute_step(
     if step_name == "review_components":
         return review_components(
             run_directory=run_directory,
+        )
+
+    if step_name == "compile_components":
+        return compile_components(
+            run_directory=run_directory,
+            timeout_seconds=120,
+        )
+
+    if step_name == "repair_compiler_errors":
+        return repair_compiler_errors(
+            run_directory=run_directory,
+            model=arguments.model,
+            max_attempts=2,
+            timeout_seconds=120,
         )
 
     if step_name == "generate_audio":

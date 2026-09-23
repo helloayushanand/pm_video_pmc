@@ -23,6 +23,8 @@ PIPELINE_STEPS = [
     "generate_artifacts",
     "generate_components",
     "review_components",
+    "compile_components",
+    "repair_compiler_errors",
     "generate_audio",
     "align_audio",
     "compile_render_spec",

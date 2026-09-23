@@ -1,4 +1,4 @@
-"""Review and approval service for generated Remotion components."""
+﻿"""Review and approval service for generated Remotion components."""
 
 from __future__ import annotations
 
@@ -107,7 +107,16 @@ class ComponentReviewService:
             if source_exists
             else ""
         )
-        source_hash = self._sha256_text(source_text) if source_exists else None
+        source_hash = (
+            hashlib.sha256(
+                source_text
+                .replace("\r\n", "\n")
+                .replace("\r", "\n")
+                .encode("utf-8")
+            ).hexdigest()
+            if source_exists
+            else None
+        )
         validation = validate_generated_source(source_text, scene_input)
         imports = validation.discovered_imports
         component = result.get("generated_component") or {}
@@ -282,10 +291,21 @@ class ComponentReviewService:
             )
         return "\n".join(lines)
 
-    @staticmethod
-    def _sha256_text(value):
-        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+        @staticmethod
+        def _sha256_text(value):
+            """Calculate a platform-independent source hash."""
 
+            canonical_text = value.replace(
+                "\r\n",
+                "\n",
+            ).replace(
+                "\r",
+                "\n",
+            )
+
+            return hashlib.sha256(
+                canonical_text.encode("utf-8")
+            ).hexdigest()
     @staticmethod
     def _safe_scene_id(value):
         return re.sub(r"[^A-Za-z0-9_-]", "_", str(value))
@@ -324,7 +344,17 @@ def create_approval(
         raise FileNotFoundError(f"Generated source does not exist: {source_file}")
 
     source_text = source_file.read_text(encoding="utf-8-sig")
-    source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    canonical_text = source_text.replace(
+        "\r\n",
+        "\n",
+    ).replace(
+        "\r",
+        "\n",
+    )
+
+    source_hash = hashlib.sha256(
+        canonical_text.encode("utf-8")
+    ).hexdigest()
     safe_scene = re.sub(r"[^A-Za-z0-9_-]", "_", scene_id)
     approvals_dir = review_root / "approvals"
     approvals_dir.mkdir(parents=True, exist_ok=True)
@@ -343,3 +373,4 @@ def create_approval(
     }
     save_json(payload, approval_path)
     return approval_path
+
