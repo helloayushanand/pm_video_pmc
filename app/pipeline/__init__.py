@@ -1,4 +1,4 @@
-﻿"""Executable pipeline stages for candidate video generation."""
+"""Executable pipeline stages for candidate video generation."""
 
 PIPELINE_STEPS = [
     "prepare_document",
@@ -6,6 +6,7 @@ PIPELINE_STEPS = [
     "validate_extraction",
     "select_video_content",
     "generate_storyboard",
+    "generate_creative_plan",
     "generate_audio",
     "align_audio",
     "compile_render_spec",

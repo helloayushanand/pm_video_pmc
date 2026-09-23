@@ -10,6 +10,7 @@ from app.pipeline.step_02_extract_dossier import extract_dossier
 from app.pipeline.step_03_validate_extraction import validate_dossier
 from app.pipeline.step_04_select_video_content import select_video_content
 from app.pipeline.step_05_generate_storyboard import generate_storyboard
+from app.pipeline.step_05b_generate_creative_plan import generate_creative_plan
 from app.pipeline.step_06_generate_audio import generate_audio
 from app.pipeline.step_07_align_audio import align_audio
 from app.pipeline.step_08_compile_render_spec import compile_render_spec
@@ -30,6 +31,9 @@ STEP_ALIASES = {
     "select_video_content": "select_video_content",
     "storyboard": "generate_storyboard",
     "generate_storyboard": "generate_storyboard",
+    "creative": "generate_creative_plan",
+    "creative_plan": "generate_creative_plan",
+    "generate_creative_plan": "generate_creative_plan",
     "audio": "generate_audio",
     "generate_audio": "generate_audio",
     "alignment": "align_audio",
@@ -309,6 +313,12 @@ def execute_step(
 
     if step_name == "generate_storyboard":
         return generate_storyboard(
+            run_directory=run_directory,
+            model=arguments.model,
+        )
+
+    if step_name == "generate_creative_plan":
+        return generate_creative_plan(
             run_directory=run_directory,
             model=arguments.model,
         )

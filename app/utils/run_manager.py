@@ -1,4 +1,4 @@
-﻿"""Local run creation and pipeline state management."""
+"""Local run creation and pipeline state management."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ PIPELINE_STEPS = [
     "validate_extraction",
     "select_video_content",
     "generate_storyboard",
+    "generate_creative_plan",
     "generate_audio",
     "align_audio",
     "compile_render_spec",
@@ -33,6 +34,7 @@ RUN_SUBDIRECTORIES = {
     "validation": "03_validation",
     "video_content": "04_video_content",
     "storyboard": "05_storyboard",
+    "creative_plan": "05b_creative_plan",
     "audio": "06_audio",
     "alignment": "07_alignment",
     "render_spec": "08_render_spec",
