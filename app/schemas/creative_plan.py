@@ -228,9 +228,14 @@ class SceneArchitectureBrief(StrictBaseModel):
 
         if (
             self.component_strategy
-            == ComponentStrategy.GENERATED_COMPONENT
-            and not self.custom_component_required
+            != ComponentStrategy.GENERATED_COMPONENT
+            and self.custom_component_required
         ):
+            object.__setattr__(
+                self,
+                "custom_component_required",
+                False,
+            )
             raise ValueError(
                 "A generated_component scene must set "
                 "custom_component_required to true."

@@ -11,6 +11,8 @@ from app.pipeline.step_03_validate_extraction import validate_dossier
 from app.pipeline.step_04_select_video_content import select_video_content
 from app.pipeline.step_05_generate_storyboard import generate_storyboard
 from app.pipeline.step_05b_generate_creative_plan import generate_creative_plan
+from app.pipeline.step_05c_prepare_artifacts import prepare_artifacts
+from app.pipeline.step_05d_generate_artifacts import generate_artifacts
 from app.pipeline.step_06_generate_audio import generate_audio
 from app.pipeline.step_07_align_audio import align_audio
 from app.pipeline.step_08_compile_render_spec import compile_render_spec
@@ -34,6 +36,10 @@ STEP_ALIASES = {
     "creative": "generate_creative_plan",
     "creative_plan": "generate_creative_plan",
     "generate_creative_plan": "generate_creative_plan",
+    "artifacts": "prepare_artifacts",
+    "prepare_artifacts": "prepare_artifacts",
+    "generate_artifacts": "generate_artifacts",
+    "artifact_generation": "generate_artifacts",
     "audio": "generate_audio",
     "generate_audio": "generate_audio",
     "alignment": "align_audio",
@@ -321,6 +327,17 @@ def execute_step(
         return generate_creative_plan(
             run_directory=run_directory,
             model=arguments.model,
+        )
+
+    if step_name == "prepare_artifacts":
+        return prepare_artifacts(
+            run_directory
+        )
+
+    if step_name == "generate_artifacts":
+        return generate_artifacts(
+            run_directory=run_directory,
+            generate_images=False,
         )
 
     if step_name == "generate_audio":
