@@ -1,4 +1,4 @@
-﻿# Configuration
+# Configuration
 python-dotenv>=1.0,<2.0
 
 # Data validation and structured schemas
@@ -31,3 +31,4 @@ pytest-mock>=3.14,<4.0
 
 openai>=1.50,<3.0
 mutagen>=1.47,<2.0
+langgraph>=1.0,<2.0

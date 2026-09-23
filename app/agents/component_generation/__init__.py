@@ -1,0 +1,1 @@
+"""Dynamic component-generation graph."""
