@@ -1,9 +1,8 @@
-"""Generate, approve, validate, and publish Phase 3B artifacts."""
+"""Generate, validate, approve, and publish Phase 3B artifacts."""
 
 from __future__ import annotations
 
 import base64
-import json
 import mimetypes
 import os
 import shutil
@@ -12,9 +11,16 @@ from pathlib import Path
 from openai import OpenAI
 from PIL import Image
 
-from app.schemas.artifact_plan import ArtifactStatus, ArtifactStrategy
-from app.utils.json_utils import load_json, save_json
+from app.schemas.artifact_plan import (
+    ArtifactStatus,
+    ArtifactStrategy,
+)
+from app.utils.json_utils import (
+    load_json,
+    save_json,
+)
 from app.utils.logging import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -24,14 +30,48 @@ class ArtifactGenerationError(Exception):
 
 
 class ArtifactGenerationService:
-    """Generate approved visual artifacts and publish them to Remotion."""
+    """
+    Generate and publish renderer-ready artifacts.
 
-    def __init__(self, image_model=None, api_key=None):
-        self.image_model = image_model or os.getenv(
-            "OPENAI_IMAGE_MODEL", "gpt-image-1"
+    Human review is reserved for source-sensitive artifacts,
+    such as dossier images and explicitly supplied local assets.
+
+    Decorative AI-generated imagery is automatically approved
+    after successful generation and deterministic file validation.
+    """
+
+    def __init__(
+        self,
+        image_model=None,
+        api_key=None,
+    ):
+        self.image_model = (
+            image_model
+            or os.getenv(
+                "OPENAI_IMAGE_MODEL",
+                "gpt-image-2.5-flare",
+            )
         )
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.client = OpenAI(api_key=self.api_key) if self.api_key else None
+
+        self.image_quality = os.getenv(
+            "OPENAI_IMAGE_QUALITY",
+            "high",
+        )
+
+        self.api_key = (
+            api_key
+            or os.getenv(
+                "OPENAI_API_KEY"
+            )
+        )
+
+        self.client = (
+            OpenAI(
+                api_key=self.api_key
+            )
+            if self.api_key
+            else None
+        )
 
     def generate_artifacts(
         self,
@@ -39,72 +79,223 @@ class ArtifactGenerationService:
         renderer_directory,
         generate_images=False,
     ):
-        run_path = Path(run_directory).expanduser().resolve()
-        renderer_path = Path(renderer_directory).expanduser().resolve()
-        artifact_root = run_path / "05c_artifacts"
-        plan_path = artifact_root / "artifact_plan.json"
-        manifest_path = artifact_root / "artifact_manifest.json"
+        run_path = (
+            Path(run_directory)
+            .expanduser()
+            .resolve()
+        )
 
-        if not plan_path.exists() or not manifest_path.exists():
+        renderer_path = (
+            Path(renderer_directory)
+            .expanduser()
+            .resolve()
+        )
+
+        artifact_root = (
+            run_path
+            / "05c_artifacts"
+        )
+
+        plan_path = (
+            artifact_root
+            / "artifact_plan.json"
+        )
+
+        manifest_path = (
+            artifact_root
+            / "artifact_manifest.json"
+        )
+
+        if (
+            not plan_path.exists()
+            or not manifest_path.exists()
+        ):
             raise FileNotFoundError(
-                "Phase 3A outputs are missing. Run prepare_artifacts first."
+                "Phase 3A outputs are missing. "
+                "Run prepare_artifacts first."
             )
 
-        plan = load_json(plan_path)
-        manifest = load_json(manifest_path)
-        generated_dir = artifact_root / "generated"
-        approved_dir = artifact_root / "approved"
-        generated_dir.mkdir(parents=True, exist_ok=True)
-        approved_dir.mkdir(parents=True, exist_ok=True)
+        plan = load_json(
+            plan_path
+        )
+
+        manifest = load_json(
+            manifest_path
+        )
+
+        generated_dir = (
+            artifact_root
+            / "generated"
+        )
+
+        approved_dir = (
+            artifact_root
+            / "approved"
+        )
+
+        generated_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        approved_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
         plan_by_id = {
-            item["artifact_id"]: item for item in plan.get("artifacts", [])
+            item["artifact_id"]: item
+            for item in plan.get(
+                "artifacts",
+                [],
+            )
         }
 
         events = []
-        for record in manifest.get("artifacts", []):
-            item = plan_by_id.get(record["artifact_id"], {})
-            strategy = record.get("source_strategy")
+
+        for record in manifest.get(
+            "artifacts",
+            [],
+        ):
+            artifact_id = record[
+                "artifact_id"
+            ]
+
+            item = plan_by_id.get(
+                artifact_id,
+                {},
+            )
+
+            strategy = record.get(
+                "source_strategy"
+            )
 
             if strategy in {
                 ArtifactStrategy.TYPOGRAPHY_ONLY.value,
                 ArtifactStrategy.REMOTION_NATIVE.value,
             }:
-                record["status"] = ArtifactStatus.READY.value
-                record["approved"] = True
-                events.append(self._event(record, "ready_for_remotion"))
+                record[
+                    "status"
+                ] = ArtifactStatus.READY.value
+
+                record[
+                    "approved"
+                ] = True
+
+                record[
+                    "validation_errors"
+                ] = []
+
+                record[
+                    "validation_warnings"
+                ] = []
+
+                events.append(
+                    self._event(
+                        record,
+                        "ready_for_remotion",
+                    )
+                )
+
                 continue
 
             if strategy in {
                 ArtifactStrategy.DETERMINISTIC_CHART.value,
                 ArtifactStrategy.DETERMINISTIC_DIAGRAM.value,
             }:
-                self._prepare_native_visual(record, item, approved_dir)
-                events.append(self._event(record, "native_spec_approved"))
+                self._prepare_native_visual(
+                    record=record,
+                    item=item,
+                    approved_dir=approved_dir,
+                )
+
+                events.append(
+                    self._event(
+                        record,
+                        "native_spec_approved",
+                    )
+                )
+
                 continue
 
-            if strategy == ArtifactStrategy.IMAGE_GENERATION.value:
+            if (
+                strategy
+                == ArtifactStrategy.IMAGE_GENERATION.value
+            ):
                 if generate_images:
-                    self._generate_decorative_image(record, item, generated_dir)
-                    events.append(self._event(record, "image_generated"))
+                    self._generate_decorative_image(
+                        record=record,
+                        item=item,
+                        generated_dir=generated_dir,
+                    )
+
+                    events.append(
+                        self._event(
+                            record,
+                            "image_generation_completed",
+                        )
+                    )
+
                 else:
-                    record["status"] = ArtifactStatus.PLANNED.value
-                    record["approved"] = False
+                    record[
+                        "status"
+                    ] = ArtifactStatus.PLANNED.value
+
+                    record[
+                        "approved"
+                    ] = False
+
                     self._append_warning(
                         record,
-                        "Image generation was skipped. Rerun with --generate-images.",
+                        (
+                            "Image generation was skipped. "
+                            "Rerun with --generate-images."
+                        ),
                     )
-                    events.append(self._event(record, "image_generation_skipped"))
+
+                    events.append(
+                        self._event(
+                            record,
+                            "image_generation_skipped",
+                        )
+                    )
+
                 continue
 
-            if strategy == ArtifactStrategy.EXTRACT_FROM_DOSSIER.value:
-                self._resolve_manual_approval(record, approved_dir)
-                events.append(self._event(record, "manual_approval_checked"))
+            if (
+                strategy
+                == ArtifactStrategy.EXTRACT_FROM_DOSSIER.value
+            ):
+                self._resolve_manual_approval(
+                    record=record,
+                    approved_dir=approved_dir,
+                )
+
+                events.append(
+                    self._event(
+                        record,
+                        "manual_approval_checked",
+                    )
+                )
+
                 continue
 
-            if strategy == ArtifactStrategy.APPROVED_LOCAL_ASSET.value:
-                self._resolve_manual_approval(record, approved_dir)
-                events.append(self._event(record, "local_asset_checked"))
+            if (
+                strategy
+                == ArtifactStrategy.APPROVED_LOCAL_ASSET.value
+            ):
+                self._resolve_manual_approval(
+                    record=record,
+                    approved_dir=approved_dir,
+                )
+
+                events.append(
+                    self._event(
+                        record,
+                        "local_asset_checked",
+                    )
+                )
+
                 continue
 
         publish_dir = (
@@ -114,253 +305,1103 @@ class ArtifactGenerationService:
             / "artifacts"
             / run_path.name
         )
-        publish_dir.mkdir(parents=True, exist_ok=True)
-        self._publish_approved_files(manifest, publish_dir, run_path.name)
-        summary = self._recalculate_manifest(manifest)
-        save_json(manifest, artifact_root / "artifact_manifest_final.json")
-        save_json(events, artifact_root / "artifact_generation_events.json")
-        save_json(summary, artifact_root / "artifact_generation_summary.json")
-        (artifact_root / "artifact_generation_summary.md").write_text(
-            self._summary_markdown(summary, manifest), encoding="utf-8"
+
+        publish_dir.mkdir(
+            parents=True,
+            exist_ok=True,
         )
-        return {"manifest": manifest, "summary": summary, "events": events}
 
-    def _prepare_native_visual(self, record, item, approved_dir):
-        """Approve a deterministic visual as a Remotion-native specification.
+        self._publish_approved_files(
+            manifest=manifest,
+            publish_dir=publish_dir,
+            run_id=run_path.name,
+        )
 
-        Phase 4 generated components will render this exact specification.
-        No image is rasterized here, which preserves animation and exact data.
-        """
-        artifact_id = record["artifact_id"]
-        output_path = approved_dir / f"{artifact_id}.json"
-        payload = {
-            "artifact_id": artifact_id,
-            "artifact_type": record.get("artifact_type"),
-            "render_mode": "remotion_native",
-            "purpose": item.get("purpose"),
-            "visual_brief": item.get("visual_brief"),
-            "data_reference": item.get("data_reference"),
-            "source_reference_ids": item.get("source_reference_ids", []),
-            "generation_constraints": item.get("generation_constraints", []),
+        summary = (
+            self._recalculate_manifest(
+                manifest
+            )
+        )
+
+        save_json(
+            manifest,
+            artifact_root
+            / "artifact_manifest_final.json",
+        )
+
+        save_json(
+            events,
+            artifact_root
+            / "artifact_generation_events.json",
+        )
+
+        save_json(
+            summary,
+            artifact_root
+            / "artifact_generation_summary.json",
+        )
+
+        (
+            artifact_root
+            / "artifact_generation_summary.md"
+        ).write_text(
+            self._summary_markdown(
+                summary,
+                manifest,
+            ),
+            encoding="utf-8",
+        )
+
+        logger.info(
+            "Artifact generation completed. "
+            "Artifacts: %s, approved: %s, "
+            "pending review: %s, failed: %s.",
+            summary["artifact_count"],
+            summary["approved_count"],
+            summary["pending_review_count"],
+            summary["failed_count"],
+        )
+
+        return {
+            "manifest": manifest,
+            "summary": summary,
+            "events": events,
         }
-        save_json(payload, output_path)
+
+    def _prepare_native_visual(
+        self,
+        record,
+        item,
+        approved_dir,
+    ):
+        """
+        Approve a deterministic visual as a Remotion-native
+        specification.
+
+        Charts and diagrams remain structured rather than being
+        rasterized so generated or library components can animate
+        them deterministically.
+        """
+
+        artifact_id = record[
+            "artifact_id"
+        ]
+
+        output_path = (
+            approved_dir
+            / f"{artifact_id}.json"
+        )
+
+        payload = {
+            "artifact_id":
+                artifact_id,
+
+            "artifact_type":
+                record.get(
+                    "artifact_type"
+                ),
+
+            "scene_id":
+                record.get(
+                    "scene_id"
+                ),
+
+            "render_mode":
+                "remotion_native",
+
+            "purpose":
+                item.get(
+                    "purpose"
+                ),
+
+            "visual_brief":
+                item.get(
+                    "visual_brief"
+                ),
+
+            "data_reference":
+                item.get(
+                    "data_reference"
+                ),
+
+            "source_reference_ids":
+                item.get(
+                    "source_reference_ids",
+                    [],
+                ),
+
+            "generation_constraints":
+                item.get(
+                    "generation_constraints",
+                    [],
+                ),
+
+            "do_not_render_instructions_as_text":
+                True,
+        }
+
+        save_json(
+            payload,
+            output_path,
+        )
+
         record.update(
             {
-                "status": ArtifactStatus.READY.value,
-                "approved": True,
-                "local_path": str(output_path),
-                "mime_type": "application/json",
-                "file_size_bytes": output_path.stat().st_size,
-                "source_description": (
-                    "Approved Remotion-native deterministic visual specification."
-                ),
-                "validation_errors": [],
+                "status":
+                    ArtifactStatus.READY.value,
+
+                "approved":
+                    True,
+
+                "local_path":
+                    str(
+                        output_path
+                    ),
+
+                "mime_type":
+                    "application/json",
+
+                "file_size_bytes":
+                    output_path.stat().st_size,
+
+                "source_description":
+                    (
+                        "Approved Remotion-native "
+                        "deterministic visual specification."
+                    ),
+
+                "validation_errors":
+                    [],
+
+                "validation_warnings":
+                    [],
             }
         )
 
-    def _generate_decorative_image(self, record, item, generated_dir):
+    def _generate_decorative_image(
+        self,
+        record,
+        item,
+        generated_dir,
+    ):
+        """
+        Generate an illustrative/non-documentary image.
+
+        Successful decorative images are automatically approved
+        after image-file validation.
+
+        This path must not be used for factual visualization,
+        candidate photographs, or company logos.
+        """
+
         if self.client is None:
             raise ArtifactGenerationError(
-                "OPENAI_API_KEY is required when --generate-images is used."
-            )
-        if record.get("factual_status") == "factual":
-            raise ArtifactGenerationError(
-                f"Factual artifact cannot use image generation: {record['artifact_id']}"
+                "OPENAI_API_KEY is required "
+                "when --generate-images is used."
             )
 
-        prompt = self._build_image_prompt(item)
-        response = self.client.images.generate(
-            model=self.image_model,
-            prompt=prompt,
-            size="1536x1024",
-            quality="medium",
-            n=1,
+        artifact_id = record[
+            "artifact_id"
+        ]
+
+        if (
+            record.get(
+                "factual_status"
+            )
+            == "factual"
+        ):
+            raise ArtifactGenerationError(
+                "Factual artifact cannot use "
+                "image generation: "
+                f"{artifact_id}"
+            )
+
+        prompt = (
+            self._build_image_prompt(
+                item
+            )
         )
-        image_base64 = response.data[0].b64_json
-        if not image_base64:
-            raise ArtifactGenerationError(
-                f"Image API returned no image for {record['artifact_id']}."
+
+        output_format = str(
+            item.get(
+                "output_format",
+                "png",
+            )
+            or "png"
+        ).lower()
+
+        if output_format not in {
+            "png",
+            "jpeg",
+            "webp",
+        }:
+            output_format = "png"
+
+        transparent = bool(
+            item.get(
+                "transparent_background",
+                False,
+            )
+        )
+
+        if (
+            transparent
+            and output_format == "jpeg"
+        ):
+            output_format = "png"
+
+        background = (
+            "transparent"
+            if transparent
+            else "opaque"
+        )
+
+        size = (
+            self._resolve_image_size(
+                item
+            )
+        )
+
+        try:
+            response = (
+                self.client
+                .images
+                .generate(
+                    model=self.image_model,
+                    prompt=prompt,
+                    size=size,
+                    quality=self.image_quality,
+                    output_format=output_format,
+                    background=background,
+                    n=1,
+                )
             )
 
-        output_path = generated_dir / f"{record['artifact_id']}.png"
-        output_path.write_bytes(base64.b64decode(image_base64))
-        width, height = self._inspect_image(output_path)
+        except Exception as error:
+            logger.exception(
+                "Image generation failed "
+                "for artifact %s.",
+                artifact_id,
+            )
+
+            record.update(
+                {
+                    "status":
+                        ArtifactStatus.FALLBACK.value,
+
+                    "approved":
+                        False,
+                }
+            )
+
+            self._append_warning(
+                record,
+                (
+                    "Image generation failed: "
+                    f"{type(error).__name__}: "
+                    f"{error}"
+                ),
+            )
+
+        return
+
+        if (
+            not response.data
+            or not response.data[0].b64_json
+        ):
+            record.update(
+                {
+                    "status":
+                        ArtifactStatus.FALLBACK.value,
+
+                    "approved":
+                        False,
+                }
+            )
+
+            self._append_warning(
+                record,
+                (
+                    "Image API returned "
+                    "no image data."
+                ),
+            )
+
+            return
+
+        image_bytes = (
+            base64.b64decode(
+                response.data[0].b64_json
+            )
+        )
+
+        suffix = (
+            ".jpg"
+            if output_format == "jpeg"
+            else f".{output_format}"
+        )
+
+        output_path = (
+            generated_dir
+            / f"{artifact_id}{suffix}"
+        )
+
+        output_path.write_bytes(
+            image_bytes
+        )
+
+        try:
+            width, height = (
+                self._inspect_image(
+                    output_path
+                )
+            )
+
+        except Exception as error:
+            record.update(
+                {
+                    "status":
+                        ArtifactStatus.FAILED.value,
+
+                    "approved":
+                        False,
+
+                    "local_path":
+                        str(
+                            output_path
+                        ),
+
+                    "validation_errors":
+                        [
+                            (
+                                "Generated image "
+                                "failed validation: "
+                                f"{error}"
+                            )
+                        ],
+                }
+            )
+
+            return
+
+        mime_type = (
+            mimetypes.guess_type(
+                output_path.name
+            )[0]
+            or (
+                "image/jpeg"
+                if output_format == "jpeg"
+                else (
+                    f"image/"
+                    f"{output_format}"
+                )
+            )
+        )
+
+        # Decorative generated imagery is automatically
+        # approved once deterministic file validation passes.
         record.update(
             {
-                "status": ArtifactStatus.NEEDS_REVIEW.value,
-                "approved": False,
-                "local_path": str(output_path),
-                "mime_type": "image/png",
-                "width": width,
-                "height": height,
-                "file_size_bytes": output_path.stat().st_size,
-                "source_description": (
-                    f"Decorative image generated using {self.image_model}."
-                ),
-                "validation_errors": [],
+                "status":
+                    ArtifactStatus.READY.value,
+
+                "approved":
+                    True,
+
+                "local_path":
+                    str(
+                        output_path
+                    ),
+
+                "mime_type":
+                    mime_type,
+
+                "width":
+                    width,
+
+                "height":
+                    height,
+
+                "file_size_bytes":
+                    output_path.stat().st_size,
+
+                "source_description":
+                    (
+                        "Decorative image generated "
+                        f"using {self.image_model} "
+                        "and automatically approved "
+                        "after deterministic image validation."
+                    ),
+
+                "validation_errors":
+                    [],
+
+                "validation_warnings":
+                    [],
             }
         )
-        self._append_warning(record, "Generated image requires approval before use.")
 
     @staticmethod
-    def _build_image_prompt(item):
-        constraints = "; ".join(item.get("generation_constraints", []))
-        return (
-            "Create a premium editorial visual for an executive profile video. "
-            + item.get("visual_brief", "Abstract professional visual.")
-            + " The image must be decorative and non-documentary. "
-            "Do not depict any identifiable real person. Do not include logos, "
-            "company names, text, numbers, signatures, documents, UI, or watermarks. "
-            "Use a refined corporate editorial aesthetic, subtle depth, restrained "
-            "warm neutrals with charcoal and muted gold, presentation-ready composition, "
-            "no empty space. Additional constraints: "
-            + constraints
+    def _build_image_prompt(
+        item,
+    ):
+        constraints = (
+            "; ".join(
+                item.get(
+                    "generation_constraints",
+                    [],
+                )
+            )
         )
 
-    def _resolve_manual_approval(self, record, approved_dir):
-        approval_file = approved_dir / f"{record['artifact_id']}.approval.json"
-        if not approval_file.exists():
-            record["status"] = ArtifactStatus.NEEDS_REVIEW.value
-            record["approved"] = False
-            self._append_warning(record, f"Approval file missing: {approval_file.name}")
-            return
-
-        approval = load_json(approval_file)
-        selected_path_value = approval.get("selected_path")
-        if not approval.get("approved") or not selected_path_value:
-            record["status"] = ArtifactStatus.REJECTED.value
-            record["approved"] = False
-            self._append_warning(record, "Artifact was not approved.")
-            return
-
-        selected_path = Path(selected_path_value).expanduser().resolve()
-        if not selected_path.exists() or not selected_path.is_file():
-            record["status"] = ArtifactStatus.FAILED.value
-            record["approved"] = False
-            record.setdefault("validation_errors", []).append(
-                f"Approved file does not exist: {selected_path}"
+        purpose = (
+            item.get(
+                "purpose",
+                "",
             )
+        )
+
+        visual_brief = (
+            item.get(
+                "visual_brief",
+                "Abstract professional visual.",
+            )
+        )
+
+        return (
+            "Create one premium editorial visual asset "
+            "for an executive-profile motion video. "
+
+            f"Visual purpose: {purpose}. "
+
+            f"Visual brief: {visual_brief}. "
+
+            "The visual must be decorative, illustrative, "
+            "non-documentary and presentation-ready. "
+
+            "Use a sophisticated corporate editorial aesthetic "
+            "with visual depth, strong composition, controlled "
+            "colour variation and clear visual hierarchy. "
+
+            "The visual should work naturally inside a 16:9 "
+            "motion-graphics composition. "
+
+            "Do not depict any identifiable real person. "
+
+            "Do not create a candidate likeness. "
+
+            "Do not create company logos or trademark-like marks. "
+
+            "Do not fabricate documentary photography or events. "
+
+            "Do not add unsupported facts, metrics, locations, "
+            "dates or claims. "
+
+            "Avoid text, labels, numbers, documents, UI elements "
+            "and watermarks unless explicitly required by the "
+            "approved visual brief. "
+
+            "Do not leave large unfinished or empty areas. "
+
+            "Additional constraints: "
+            + (
+                constraints
+                or "none"
+            )
+        )
+
+    @staticmethod
+    def _resolve_image_size(
+        item,
+    ):
+        width = item.get(
+            "preferred_width"
+        )
+
+        height = item.get(
+            "preferred_height"
+        )
+
+        if width and height:
+            try:
+                resolved_width = max(
+                    16,
+                    int(
+                        round(
+                            float(width) / 16
+                        ) * 16
+                    ),
+                )
+
+                resolved_height = max(
+                    16,
+                    int(
+                        round(
+                            float(height) / 16
+                        ) * 16
+                    ),
+                )
+
+                ratio = (
+                    resolved_width
+                    / resolved_height
+                )
+
+                pixels = (
+                    resolved_width
+                    * resolved_height
+                )
+
+                if (
+                    1 / 3 <= ratio <= 3
+                    and resolved_width <= 3840
+                    and resolved_height <= 3840
+                    and 655_360
+                    <= pixels
+                    <= 8_294_400
+                ):
+                    return (
+                        f"{resolved_width}"
+                        f"x{resolved_height}"
+                    )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+                pass
+
+        return "1536x1024"
+
+    def _resolve_manual_approval(
+        self,
+        record,
+        approved_dir,
+    ):
+        """
+        Handle approval of source-sensitive artifacts.
+
+        Examples:
+        - extracted dossier photograph
+        - approved local asset
+        - other externally supplied source asset
+        """
+
+        approval_file = (
+            approved_dir
+            / (
+                f"{record['artifact_id']}"
+                ".approval.json"
+            )
+        )
+
+        if not approval_file.exists():
+            record[
+                "status"
+            ] = (
+                ArtifactStatus
+                .NEEDS_REVIEW
+                .value
+            )
+
+            record[
+                "approved"
+            ] = False
+
+            self._append_warning(
+                record,
+                (
+                    "Approval file missing: "
+                    f"{approval_file.name}"
+                ),
+            )
+
             return
 
-        suffix = selected_path.suffix.lower() or ".bin"
-        approved_copy = approved_dir / f"{record['artifact_id']}{suffix}"
-        if selected_path != approved_copy:
-            shutil.copy2(selected_path, approved_copy)
+        approval = load_json(
+            approval_file
+        )
 
-        mime_type = mimetypes.guess_type(approved_copy.name)[0]
+        selected_path_value = (
+            approval.get(
+                "selected_path"
+            )
+        )
+
+        if (
+            not approval.get(
+                "approved"
+            )
+            or not selected_path_value
+        ):
+            record[
+                "status"
+            ] = (
+                ArtifactStatus
+                .REJECTED
+                .value
+            )
+
+            record[
+                "approved"
+            ] = False
+
+            self._append_warning(
+                record,
+                "Artifact was not approved.",
+            )
+
+            return
+
+        selected_path = (
+            Path(
+                selected_path_value
+            )
+            .expanduser()
+            .resolve()
+        )
+
+        if (
+            not selected_path.exists()
+            or not selected_path.is_file()
+        ):
+            record[
+                "status"
+            ] = (
+                ArtifactStatus
+                .FAILED
+                .value
+            )
+
+            record[
+                "approved"
+            ] = False
+
+            record.setdefault(
+                "validation_errors",
+                [],
+            ).append(
+                (
+                    "Approved file does "
+                    "not exist: "
+                    f"{selected_path}"
+                )
+            )
+
+            return
+
+        suffix = (
+            selected_path
+            .suffix
+            .lower()
+            or ".bin"
+        )
+
+        approved_copy = (
+            approved_dir
+            / (
+                f"{record['artifact_id']}"
+                f"{suffix}"
+            )
+        )
+
+        if (
+            selected_path
+            != approved_copy
+        ):
+            shutil.copy2(
+                selected_path,
+                approved_copy,
+            )
+
+        mime_type = (
+            mimetypes.guess_type(
+                approved_copy.name
+            )[0]
+        )
+
         width = None
         height = None
-        if mime_type and mime_type.startswith("image/"):
-            width, height = self._inspect_image(approved_copy)
+
+        if (
+            mime_type
+            and mime_type.startswith(
+                "image/"
+            )
+        ):
+            width, height = (
+                self._inspect_image(
+                    approved_copy
+                )
+            )
 
         record.update(
             {
-                "status": ArtifactStatus.APPROVED.value,
-                "approved": True,
-                "local_path": str(approved_copy),
-                "mime_type": mime_type or "application/octet-stream",
-                "width": width,
-                "height": height,
-                "file_size_bytes": approved_copy.stat().st_size,
-                "source_description": approval.get(
-                    "source_description", "Manually approved artifact."
-                ),
-                "validation_errors": [],
-                "validation_warnings": [],
+                "status":
+                    ArtifactStatus
+                    .APPROVED
+                    .value,
+
+                "approved":
+                    True,
+
+                "local_path":
+                    str(
+                        approved_copy
+                    ),
+
+                "mime_type":
+                    (
+                        mime_type
+                        or "application/octet-stream"
+                    ),
+
+                "width":
+                    width,
+
+                "height":
+                    height,
+
+                "file_size_bytes":
+                    approved_copy.stat().st_size,
+
+                "source_description":
+                    approval.get(
+                        "source_description",
+                        (
+                            "Manually approved "
+                            "source artifact."
+                        ),
+                    ),
+
+                "validation_errors":
+                    [],
+
+                "validation_warnings":
+                    [],
             }
         )
 
     @staticmethod
-    def _publish_approved_files(manifest, publish_dir, run_id):
-        for record in manifest.get("artifacts", []):
-            if not record.get("approved") or not record.get("local_path"):
+    def _publish_approved_files(
+        manifest,
+        publish_dir,
+        run_id,
+    ):
+        """
+        Publish approved binary artifacts into Remotion public assets.
+
+        Native JSON chart/diagram specifications remain structured
+        artifacts and are consumed through the artifact manifest.
+        """
+
+        for record in manifest.get(
+            "artifacts",
+            [],
+        ):
+            if not record.get(
+                "approved"
+            ):
                 continue
-            source = Path(record["local_path"])
-            if not source.exists() or source.suffix.lower() == ".json":
+
+            local_path = (
+                record.get(
+                    "local_path"
+                )
+            )
+
+            if not local_path:
                 continue
-            destination = publish_dir / source.name
-            shutil.copy2(source, destination)
-            record["renderer_path"] = (
-                f"generated/artifacts/{run_id}/{destination.name}"
+
+            source = Path(
+                local_path
+            )
+
+            if (
+                not source.exists()
+                or not source.is_file()
+            ):
+                continue
+
+            if (
+                source.suffix.lower()
+                == ".json"
+            ):
+                continue
+
+            destination = (
+                publish_dir
+                / source.name
+            )
+
+            shutil.copy2(
+                source,
+                destination,
+            )
+
+            record[
+                "renderer_path"
+            ] = (
+                "generated/artifacts/"
+                f"{run_id}/"
+                f"{destination.name}"
             )
 
     @staticmethod
-    def _inspect_image(path):
-        with Image.open(path) as image:
+    def _inspect_image(
+        path,
+    ):
+        with Image.open(
+            path
+        ) as image:
             image.verify()
-        with Image.open(path) as image:
-            return int(image.width), int(image.height)
+
+        with Image.open(
+            path
+        ) as image:
+            return (
+                int(
+                    image.width
+                ),
+                int(
+                    image.height
+                ),
+            )
 
     @staticmethod
-    def _append_warning(record, warning):
-        warnings = record.setdefault("validation_warnings", [])
+    def _append_warning(
+        record,
+        warning,
+    ):
+        warnings = (
+            record.setdefault(
+                "validation_warnings",
+                [],
+            )
+        )
+
         if warning not in warnings:
-            warnings.append(warning)
+            warnings.append(
+                warning
+            )
 
     @staticmethod
-    def _event(record, event):
+    def _event(
+        record,
+        event,
+    ):
         return {
-            "artifact_id": record.get("artifact_id"),
-            "event": event,
-            "status": record.get("status"),
-            "approved": record.get("approved"),
+            "artifact_id":
+                record.get(
+                    "artifact_id"
+                ),
+
+            "event":
+                event,
+
+            "status":
+                record.get(
+                    "status"
+                ),
+
+            "approved":
+                record.get(
+                    "approved"
+                ),
         }
 
     @staticmethod
-    def _recalculate_manifest(manifest):
-        artifacts = manifest.get("artifacts", [])
-        approved = sum(1 for item in artifacts if item.get("approved"))
+    def _recalculate_manifest(
+        manifest,
+    ):
+        artifacts = manifest.get(
+            "artifacts",
+            [],
+        )
+
+        approved = sum(
+            1
+            for item in artifacts
+            if item.get(
+                "approved"
+            )
+        )
+
         pending = sum(
             1
             for item in artifacts
-            if item.get("status") == ArtifactStatus.NEEDS_REVIEW.value
+            if item.get(
+                "status"
+            )
+            == ArtifactStatus.NEEDS_REVIEW.value
         )
+
+        planned = sum(
+            1
+            for item in artifacts
+            if item.get(
+                "status"
+            )
+            == ArtifactStatus.PLANNED.value
+        )
+
         failed = sum(
             1
             for item in artifacts
-            if item.get("status") == ArtifactStatus.FAILED.value
+            if item.get(
+                "status"
+            )
+            == ArtifactStatus.FAILED.value
         )
+
         rejected = sum(
             1
             for item in artifacts
-            if item.get("status") == ArtifactStatus.REJECTED.value
+            if item.get(
+                "status"
+            )
+            == ArtifactStatus.REJECTED.value
         )
-        manifest["approved_artifact_count"] = approved
-        manifest["pending_review_count"] = pending
-        manifest["failed_artifact_count"] = failed
+
+        fallback = sum(
+            1
+            for item in artifacts
+            if item.get(
+                "status"
+            )
+            == ArtifactStatus.FALLBACK.value
+        )
+
+        manifest[
+            "approved_artifact_count"
+        ] = approved
+
+        manifest[
+            "pending_review_count"
+        ] = pending
+
+        manifest[
+            "failed_artifact_count"
+        ] = failed
+
         return {
-            "artifact_count": len(artifacts),
-            "approved_count": approved,
-            "pending_review_count": pending,
-            "failed_count": failed,
-            "rejected_count": rejected,
-            "ready_for_component_generation": failed == 0,
+            "artifact_count":
+                len(
+                    artifacts
+                ),
+
+            "approved_count":
+                approved,
+
+            "pending_review_count":
+                pending,
+
+            "planned_count":
+                planned,
+
+            "fallback_count":
+                fallback,
+
+            "failed_count":
+                failed,
+
+            "rejected_count":
+                rejected,
+
+            "ready_for_component_generation":
+                failed == 0,
         }
 
     @staticmethod
-    def _summary_markdown(summary, manifest):
+    def _summary_markdown(
+        summary,
+        manifest,
+    ):
         lines = [
             "# Phase 3B Artifact Generation Summary",
+
             "",
-            f"Artifacts: {summary['artifact_count']}",
-            f"Approved or ready: {summary['approved_count']}",
-            f"Pending review: {summary['pending_review_count']}",
-            f"Failed: {summary['failed_count']}",
-            f"Rejected: {summary['rejected_count']}",
+
+            (
+                "Artifacts: "
+                f"{summary['artifact_count']}"
+            ),
+
+            (
+                "Approved or ready: "
+                f"{summary['approved_count']}"
+            ),
+
+            (
+                "Pending review: "
+                f"{summary['pending_review_count']}"
+            ),
+
+            (
+                "Planned: "
+                f"{summary['planned_count']}"
+            ),
+
+            (
+                "Fallback: "
+                f"{summary['fallback_count']}"
+            ),
+
+            (
+                "Failed: "
+                f"{summary['failed_count']}"
+            ),
+
+            (
+                "Rejected: "
+                f"{summary['rejected_count']}"
+            ),
+
             "",
+
             "## Artifacts",
+
             "",
         ]
-        for item in manifest.get("artifacts", []):
+
+        for item in manifest.get(
+            "artifacts",
+            [],
+        ):
             lines.extend(
                 [
-                    f"### {item['artifact_id']}",
-                    f"- Strategy: {item.get('source_strategy')}",
-                    f"- Status: {item.get('status')}",
-                    f"- Approved: {item.get('approved')}",
-                    f"- Local path: {item.get('local_path')}",
-                    f"- Renderer path: {item.get('renderer_path')}",
+                    (
+                        "### "
+                        f"{item['artifact_id']}"
+                    ),
+
+                    (
+                        "- Strategy: "
+                        f"{item.get('source_strategy')}"
+                    ),
+
+                    (
+                        "- Status: "
+                        f"{item.get('status')}"
+                    ),
+
+                    (
+                        "- Approved: "
+                        f"{item.get('approved')}"
+                    ),
+
+                    (
+                        "- Local path: "
+                        f"{item.get('local_path')}"
+                    ),
+
+                    (
+                        "- Renderer path: "
+                        f"{item.get('renderer_path')}"
+                    ),
+
                     "",
                 ]
             )
+
         return "\n".join(lines)

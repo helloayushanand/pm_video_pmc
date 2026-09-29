@@ -1,10 +1,13 @@
-"""Render approved dynamic scenes and integrate them into the demo video."""
+"""Render approved generated scenes and integrate them into the full video timeline."""
+
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from app.config import RENDERER_DIR
 from app.services.component_preview_service import ComponentPreviewService
@@ -15,18 +18,28 @@ logger = get_logger(__name__)
 
 
 class DynamicVideoRenderError(Exception):
-    """Raised when the integrated dynamic demo video cannot be rendered."""
+    """Raised when the integrated dynamic video cannot be rendered."""
 
 
 class DynamicVideoRenderService:
-    """Render generated scenes and splice them into the existing full video.
+    """Render an ordered mix of generated and existing static scene segments.
 
-    The Phase 7B demo path preserves the original narration audio and all
-    original static scenes. It replaces the opening scene video segment with
-    the approved generated intro component for the same duration.
+    The authoritative audio remains the audio stream from the existing full
+    video. Each timeline scene is resolved independently:
+
+    * use an approved generated component when one is published and visually
+      approved;
+    * otherwise extract the corresponding interval from the existing video;
+    * if a generated scene fails at runtime, record the failure and use the
+      original static interval as a safe fallback.
     """
 
-    def render(self, run_directory, output_directory, timeout_seconds=900):
+    def render(
+        self,
+        run_directory,
+        output_directory,
+        timeout_seconds=900,
+    ):
         run_path = Path(run_directory).expanduser().resolve()
         output_path = Path(output_directory).expanduser().resolve()
         output_path.mkdir(parents=True, exist_ok=True)
@@ -52,29 +65,29 @@ class DynamicVideoRenderService:
             / "artifact_manifest_final.json"
         )
 
-        for required in (
+        for required_path in (
             publish_path,
             preview_path,
             plan_path,
             artifact_path,
         ):
-            if not required.exists():
+            if not required_path.exists():
                 raise FileNotFoundError(
-                    f"Required Phase 7B input is missing: {required}"
+                    f"Required dynamic-render input is missing: {required_path}"
                 )
 
         publish_report = load_json(publish_path)
         preview_report = load_json(preview_path)
-        plan = load_json(plan_path)
+        generation_plan = load_json(plan_path)
         artifact_manifest = load_json(artifact_path)
 
         if not publish_report.get("ready_for_runtime_integration"):
             raise DynamicVideoRenderError(
-                "Phase 7A publishing is not ready for runtime integration."
+                "Published components are not ready for runtime integration."
             )
         if not preview_report.get("ready_for_phase_7"):
             raise DynamicVideoRenderError(
-                "Phase 6 visual QA is not approved."
+                "Per-scene visual QA is not approved."
             )
 
         source_video = self._find_source_video(run_path)
@@ -83,92 +96,197 @@ class DynamicVideoRenderService:
         width, height = self._video_dimensions(source_probe)
         original_duration = self._duration(source_probe)
 
-        scene_inputs = {
+        timeline = self._resolve_timeline(
+            run_path=run_path,
+            source_duration=original_duration,
+            fps=fps,
+        )
+        if not timeline:
+            raise DynamicVideoRenderError("The resolved scene timeline is empty.")
+
+        published_by_scene = {
             item["scene_id"]: item
-            for item in plan.get("scenes", [])
+            for item in publish_report.get("published", [])
         }
         preview_by_scene = {
             item["scene_id"]: item
             for item in preview_report.get("results", [])
         }
+        scene_inputs = {
+            item["scene_id"]: item
+            for item in generation_plan.get("scenes", [])
+        }
 
-        published = publish_report.get("published", [])
-        intro_candidates = [
-            item
-            for item in published
-            if item.get("scene_id") == "intro"
-        ]
-        if not intro_candidates:
-            raise DynamicVideoRenderError(
-                "Phase 7B demo integration currently requires an approved "
-                "generated scene with scene_id 'intro'."
-            )
-
-        intro = intro_candidates[0]
-        scene_input = scene_inputs.get("intro")
-        preview = preview_by_scene.get("intro")
-        if scene_input is None:
-            raise DynamicVideoRenderError("Generation input for intro is missing.")
-        if preview is None or not preview.get("visual_approved"):
-            raise DynamicVideoRenderError("The intro scene is not visually approved.")
-
-        intro_duration = float(
-            scene_input.get("duration_hint_seconds", 8.0)
-        )
-        intro_duration = min(
-            max(intro_duration, 1.0),
-            max(original_duration - 0.5, 1.0),
-        )
-
-        workspace = (
-            Path(RENDERER_DIR).expanduser().resolve()
+        renderer = Path(RENDERER_DIR).expanduser().resolve()
+        workspace_root = (
+            renderer
             / ".phase7_dynamic_render_workspaces"
             / run_path.name
         )
-        if workspace.exists():
-            shutil.rmtree(workspace)
-        workspace.mkdir(parents=True, exist_ok=True)
+        if workspace_root.exists():
+            shutil.rmtree(workspace_root)
+        workspace_root.mkdir(parents=True, exist_ok=True)
 
-        dynamic_intro = output_path / "dynamic_intro.mp4"
+        segments_dir = output_path / "segments"
+        if segments_dir.exists():
+            shutil.rmtree(segments_dir)
+        segments_dir.mkdir(parents=True, exist_ok=True)
+
+        scene_resolution: list[dict[str, Any]] = []
+        fallback_events: list[dict[str, Any]] = []
+        segment_paths: list[Path] = []
+        render_logs: list[str] = []
+
+        for index, timeline_scene in enumerate(timeline):
+            scene_id = timeline_scene["scene_id"]
+            generated_component = published_by_scene.get(scene_id)
+            preview_result = preview_by_scene.get(scene_id)
+            scene_input = scene_inputs.get(scene_id)
+            segment_path = (
+                segments_dir
+                / f"{index + 1:02d}_{self._safe_name(scene_id)}.mp4"
+            )
+
+            requested_strategy = (
+                "generated_component"
+                if generated_component is not None
+                else "static_component"
+            )
+            generated_is_available = (
+                generated_component is not None
+                and preview_result is not None
+                and bool(preview_result.get("visual_approved"))
+                and preview_result.get("status") == "visual_approved"
+                and scene_input is not None
+            )
+            failure_reason = None
+
+            if generated_is_available:
+                try:
+                    result = self._render_generated_segment(
+                        run_path=run_path,
+                        workspace_root=workspace_root,
+                        published_item=generated_component,
+                        scene_input=scene_input,
+                        artifact_manifest=artifact_manifest,
+                        destination=segment_path,
+                        duration_seconds=timeline_scene["duration_seconds"],
+                        fps=fps,
+                        width=width,
+                        height=height,
+                        timeout_seconds=timeout_seconds,
+                    )
+                    render_logs.append(
+                        self._format_process_log(
+                            scene_id,
+                            "generated_component",
+                            result,
+                        )
+                    )
+                    resolved_strategy = "generated_component"
+                except Exception as error:
+                    failure_reason = f"{type(error).__name__}: {error}"
+                    logger.warning(
+                        "Generated scene %s failed; using the static interval: %s",
+                        scene_id,
+                        failure_reason,
+                    )
+                    result = self._extract_static_segment(
+                        source_video=source_video,
+                        destination=segment_path,
+                        start_seconds=timeline_scene["start_seconds"],
+                        duration_seconds=timeline_scene["duration_seconds"],
+                        fps=fps,
+                        width=width,
+                        height=height,
+                        timeout_seconds=timeout_seconds,
+                    )
+                    render_logs.append(
+                        self._format_process_log(
+                            scene_id,
+                            "static_fallback",
+                            result,
+                        )
+                    )
+                    resolved_strategy = "static_fallback"
+                    fallback_events.append(
+                        {
+                            "scene_id": scene_id,
+                            "reason": failure_reason,
+                            "fallback_component": generated_component.get(
+                                "fallback_component"
+                            ),
+                            "segment_path": str(segment_path),
+                        }
+                    )
+            else:
+                result = self._extract_static_segment(
+                    source_video=source_video,
+                    destination=segment_path,
+                    start_seconds=timeline_scene["start_seconds"],
+                    duration_seconds=timeline_scene["duration_seconds"],
+                    fps=fps,
+                    width=width,
+                    height=height,
+                    timeout_seconds=timeout_seconds,
+                )
+                render_logs.append(
+                    self._format_process_log(
+                        scene_id,
+                        "static_segment",
+                        result,
+                    )
+                )
+                resolved_strategy = "static_segment"
+
+            if not segment_path.exists() or segment_path.stat().st_size == 0:
+                raise DynamicVideoRenderError(
+                    f"Resolved segment is missing or empty: {segment_path}"
+                )
+
+            segment_paths.append(segment_path)
+            scene_resolution.append(
+                {
+                    **timeline_scene,
+                    "requested_strategy": requested_strategy,
+                    "resolved_strategy": resolved_strategy,
+                    "component_name": (
+                        generated_component.get("component_name")
+                        if generated_component
+                        else None
+                    ),
+                    "fallback_component": (
+                        generated_component.get("fallback_component")
+                        if generated_component
+                        else None
+                    ),
+                    "source_hash_verified": bool(generated_component),
+                    "visual_qa_approved": bool(
+                        preview_result and preview_result.get("visual_approved")
+                    ),
+                    "failure_reason": failure_reason,
+                    "segment_path": str(segment_path),
+                }
+            )
+
         final_video = output_path / "candidate_video_dynamic.mp4"
-        render_log = output_path / "render_log.txt"
-
-        intro_result = self._render_intro(
-            run_path=run_path,
-            workspace=workspace,
-            published_item=intro,
-            scene_input=scene_input,
-            artifact_manifest=artifact_manifest,
-            destination=dynamic_intro,
-            duration_seconds=intro_duration,
-            fps=fps,
-            width=width,
-            height=height,
-            timeout_seconds=timeout_seconds,
-        )
-
-        splice_result = self._splice_intro(
+        assembly_result = self._assemble_segments(
+            segment_paths=segment_paths,
             source_video=source_video,
-            dynamic_intro=dynamic_intro,
             destination=final_video,
-            intro_duration=intro_duration,
-            fps=fps,
-            width=width,
-            height=height,
             timeout_seconds=timeout_seconds,
         )
-
-        log_text = (
-            "DYNAMIC INTRO RENDER\n"
-            + intro_result["stdout"]
-            + "\n"
-            + intro_result["stderr"]
-            + "\n\nFULL VIDEO SPLICE\n"
-            + splice_result["stdout"]
-            + "\n"
-            + splice_result["stderr"]
+        render_logs.append(
+            self._format_process_log(
+                "full_video",
+                "assembly",
+                assembly_result,
+            )
         )
-        render_log.write_text(log_text, encoding="utf-8")
+        (output_path / "render_log.txt").write_text(
+            "\n\n".join(render_logs),
+            encoding="utf-8",
+        )
 
         if not final_video.exists() or final_video.stat().st_size == 0:
             raise DynamicVideoRenderError(
@@ -180,47 +298,48 @@ class DynamicVideoRenderService:
         has_video = self._has_stream(final_probe, "video")
         has_audio = self._has_stream(final_probe, "audio")
         duration_delta = abs(final_duration - original_duration)
+        dynamic_scene_count = sum(
+            1
+            for item in scene_resolution
+            if item["resolved_strategy"] == "generated_component"
+        )
+        static_scene_count = sum(
+            1
+            for item in scene_resolution
+            if item["resolved_strategy"]
+            in {"static_segment", "static_fallback"}
+        )
 
-        scene_resolution = {
-            "scene_id": "intro",
-            "requested_strategy": "generated_component",
-            "resolved_strategy": "generated_component",
-            "component_name": intro["component_name"],
-            "fallback_component": intro["fallback_component"],
-            "source_hash_verified": True,
-            "visual_qa_approved": True,
-            "start_seconds": 0.0,
-            "end_seconds": intro_duration,
-            "duration_seconds": intro_duration,
+        technical_checks = {
+            "video_exists": final_video.exists(),
+            "video_non_empty": final_video.stat().st_size > 0,
+            "has_video_stream": has_video,
+            "has_audio_stream": has_audio,
+            "original_duration_seconds": original_duration,
+            "final_duration_seconds": final_duration,
+            "duration_delta_seconds": duration_delta,
+            "duration_within_tolerance": duration_delta <= 0.50,
+            "resolved_scene_count": len(scene_resolution),
+            "passed": (
+                final_video.exists()
+                and final_video.stat().st_size > 0
+                and has_video
+                and has_audio
+                and duration_delta <= 0.50
+                and len(scene_resolution) == len(timeline)
+            ),
         }
-        fallback_events = []
         renderer_manifest = {
-            "schema_version": "1.0",
+            "schema_version": "2.0",
             "run_id": run_path.name,
             "source_video": str(source_video),
-            "dynamic_intro": str(dynamic_intro),
             "final_video": str(final_video),
             "video_width": width,
             "video_height": height,
             "fps": fps,
             "original_duration_seconds": original_duration,
             "final_duration_seconds": final_duration,
-            "scene_resolution": [scene_resolution],
-        }
-        technical_checks = {
-            "video_exists": final_video.exists(),
-            "video_non_empty": final_video.stat().st_size > 0,
-            "has_video_stream": has_video,
-            "has_audio_stream": has_audio,
-            "duration_delta_seconds": duration_delta,
-            "duration_within_tolerance": duration_delta <= 0.35,
-            "passed": (
-                final_video.exists()
-                and final_video.stat().st_size > 0
-                and has_video
-                and has_audio
-                and duration_delta <= 0.35
-            ),
+            "scene_resolution": scene_resolution,
         }
         summary = {
             "status": (
@@ -230,14 +349,15 @@ class DynamicVideoRenderService:
             ),
             "output_video": str(final_video),
             "source_video": str(source_video),
-            "dynamic_scene_count": 1,
+            "dynamic_scene_count": dynamic_scene_count,
+            "static_scene_count": static_scene_count,
             "fallback_count": len(fallback_events),
             "technical_checks": technical_checks,
             "ready_for_phase_7c": technical_checks["passed"],
         }
 
         save_json(
-            {"scenes": [scene_resolution]},
+            {"scenes": scene_resolution},
             output_path / "scene_resolution_report.json",
         )
         save_json(
@@ -258,10 +378,189 @@ class DynamicVideoRenderService:
         )
         return summary
 
-    def _render_intro(
+    def _resolve_timeline(self, run_path, source_duration, fps):
+        """Resolve ordered scene boundaries from render spec or storyboard."""
+        render_spec_path = run_path / "08_render_spec" / "render_spec.json"
+        storyboard_path = run_path / "05_storyboard" / "storyboard.json"
+
+        render_spec = (
+            load_json(render_spec_path)
+            if render_spec_path.exists()
+            else {}
+        )
+        storyboard = (
+            load_json(storyboard_path)
+            if storyboard_path.exists()
+            else {}
+        )
+        raw_scenes = self._extract_scene_collection(render_spec)
+        if not raw_scenes:
+            raw_scenes = self._extract_scene_collection(storyboard)
+        if not raw_scenes:
+            raise DynamicVideoRenderError(
+                "No scene collection was found in render_spec.json or "
+                "storyboard.json."
+            )
+
+        scenes = []
+        running_start = 0.0
+        for index, raw_scene in enumerate(raw_scenes):
+            scene_id = (
+                raw_scene.get("scene_id")
+                or raw_scene.get("sceneId")
+                or raw_scene.get("id")
+                or f"scene_{index + 1:02d}"
+            )
+            start_seconds = self._first_number(
+                raw_scene,
+                ["start_seconds", "start_time", "start", "from_seconds"],
+            )
+            end_seconds = self._first_number(
+                raw_scene,
+                ["end_seconds", "end_time", "end", "to_seconds"],
+            )
+            duration_seconds = self._first_number(
+                raw_scene,
+                [
+                    "duration_seconds",
+                    "approx_duration_seconds",
+                    "duration",
+                ],
+            )
+            start_frame = self._first_number(
+                raw_scene,
+                ["start_frame", "from_frame"],
+            )
+            end_frame = self._first_number(
+                raw_scene,
+                ["end_frame", "to_frame"],
+            )
+            duration_frames = self._first_number(
+                raw_scene,
+                ["duration_in_frames", "duration_frames"],
+            )
+
+            if start_seconds is None and start_frame is not None:
+                start_seconds = start_frame / fps
+            if end_seconds is None and end_frame is not None:
+                end_seconds = end_frame / fps
+            if duration_seconds is None and duration_frames is not None:
+                duration_seconds = duration_frames / fps
+            if start_seconds is None:
+                start_seconds = running_start
+            if end_seconds is None and duration_seconds is not None:
+                end_seconds = start_seconds + duration_seconds
+
+            if end_seconds is None:
+                next_start = self._next_start_seconds(raw_scenes, index, fps)
+                if next_start is not None:
+                    end_seconds = next_start
+                elif index == len(raw_scenes) - 1:
+                    end_seconds = source_duration
+                else:
+                    raise DynamicVideoRenderError(
+                        f"Unable to resolve an end time for scene {scene_id}."
+                    )
+
+            start_seconds = max(0.0, float(start_seconds))
+            end_seconds = min(source_duration, float(end_seconds))
+            if end_seconds <= start_seconds:
+                raise DynamicVideoRenderError(
+                    f"Invalid timeline interval for {scene_id}: "
+                    f"{start_seconds} to {end_seconds}."
+                )
+
+            scenes.append(
+                {
+                    "scene_id": str(scene_id),
+                    "scene_type": raw_scene.get(
+                        "scene_type",
+                        raw_scene.get("type", "generic"),
+                    ),
+                    "start_seconds": start_seconds,
+                    "end_seconds": end_seconds,
+                    "duration_seconds": end_seconds - start_seconds,
+                    "start_frame": int(round(start_seconds * fps)),
+                    "end_frame": int(round(end_seconds * fps)),
+                }
+            )
+            running_start = end_seconds
+
+        scenes.sort(key=lambda item: item["start_seconds"])
+        scenes[0]["start_seconds"] = 0.0
+        scenes[0]["start_frame"] = 0
+        for index in range(1, len(scenes)):
+            previous_end = scenes[index - 1]["end_seconds"]
+            current_start = scenes[index]["start_seconds"]
+            if abs(current_start - previous_end) <= 0.50:
+                scenes[index]["start_seconds"] = previous_end
+                scenes[index]["start_frame"] = int(round(previous_end * fps))
+                scenes[index]["duration_seconds"] = (
+                    scenes[index]["end_seconds"] - previous_end
+                )
+        scenes[-1]["end_seconds"] = source_duration
+        scenes[-1]["end_frame"] = int(round(source_duration * fps))
+        scenes[-1]["duration_seconds"] = (
+            source_duration - scenes[-1]["start_seconds"]
+        )
+        return scenes
+
+    @staticmethod
+    def _extract_scene_collection(value):
+        if isinstance(value, list):
+            return value
+        if not isinstance(value, dict):
+            return []
+        for key in (
+            "scenes",
+            "timeline",
+            "scene_specs",
+            "segments",
+            "scene_timeline",
+        ):
+            candidate = value.get(key)
+            if isinstance(candidate, list) and candidate:
+                return candidate
+        for candidate in value.values():
+            if not isinstance(candidate, dict):
+                continue
+            nested = DynamicVideoRenderService._extract_scene_collection(candidate)
+            if nested:
+                return nested
+        return []
+
+    @staticmethod
+    def _first_number(value, keys):
+        for key in keys:
+            candidate = value.get(key)
+            if candidate is None:
+                continue
+            try:
+                return float(candidate)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _next_start_seconds(self, raw_scenes, index, fps):
+        if index + 1 >= len(raw_scenes):
+            return None
+        next_scene = raw_scenes[index + 1]
+        seconds = self._first_number(
+            next_scene,
+            ["start_seconds", "start_time", "start", "from_seconds"],
+        )
+        if seconds is not None:
+            return seconds
+        frame = self._first_number(
+            next_scene,
+            ["start_frame", "from_frame"],
+        )
+        return frame / fps if frame is not None else None
+
+    def _render_generated_segment(
         self,
         run_path,
-        workspace,
+        workspace_root,
         published_item,
         scene_input,
         artifact_manifest,
@@ -273,8 +572,14 @@ class DynamicVideoRenderService:
         timeout_seconds,
     ):
         renderer = Path(RENDERER_DIR).expanduser().resolve()
-        src = workspace / "src"
-        public = workspace / "public"
+        scene_workspace = (
+            workspace_root
+            / self._safe_name(scene_input["scene_id"])
+        )
+        if scene_workspace.exists():
+            shutil.rmtree(scene_workspace)
+        src = scene_workspace / "src"
+        public = scene_workspace / "public"
         generated = src / "generated"
         generated.mkdir(parents=True, exist_ok=True)
         public.mkdir(parents=True, exist_ok=True)
@@ -292,9 +597,7 @@ class DynamicVideoRenderService:
         published_source = Path(
             published_item["published_source"]
         ).resolve()
-        source_text = published_source.read_text(
-            encoding="utf-8-sig"
-        )
+        source_text = published_source.read_text(encoding="utf-8-sig")
         workspace_text = (
             source_text
             .replace(
@@ -305,14 +608,19 @@ class DynamicVideoRenderService:
                 "from '../../../dynamic-sdk'",
                 "from '../dynamic-sdk'",
             )
+            .replace(
+                'from "@/dynamic-sdk"',
+                'from "../dynamic-sdk"',
+            )
+            .replace(
+                "from '@/dynamic-sdk'",
+                "from '../dynamic-sdk'",
+            )
         )
         component_copy = generated / published_source.name
         component_copy.write_text(workspace_text, encoding="utf-8")
 
-        duration_frames = max(
-            1,
-            int(round(duration_seconds * fps)),
-        )
+        duration_frames = max(1, int(round(duration_seconds * fps)))
         props = ComponentPreviewService._preview_props(
             scene_input,
             artifact_manifest,
@@ -330,7 +638,7 @@ class DynamicVideoRenderService:
             + ';\n'
             'export const Root: React.FC = () => '
             'React.createElement(Composition, {\n'
-            '  id: "DynamicIntro",\n'
+            '  id: "DynamicScene",\n'
             f'  component: {component_name},\n'
             f'  durationInFrames: {duration_frames},\n'
             f'  fps: {fps},\n'
@@ -346,22 +654,17 @@ class DynamicVideoRenderService:
             'registerRoot(Root);\n',
             encoding="utf-8",
         )
-        (workspace / "package.json").write_text(
-            '{"name":"phase7-dynamic-render","private":true}',
+        (scene_workspace / "package.json").write_text(
+            '{"name":"phase7-scene-render","private":true}',
             encoding="utf-8",
         )
 
-        remotion = (
-            renderer
-            / "node_modules"
-            / ".bin"
-            / "remotion.cmd"
-        )
+        remotion = renderer / "node_modules" / ".bin" / "remotion.cmd"
         command = [
             str(remotion),
             "render",
             "src/index.ts",
-            "DynamicIntro",
+            "DynamicScene",
             str(destination),
             "--codec",
             "h264",
@@ -372,7 +675,7 @@ class DynamicVideoRenderService:
         ]
         completed = subprocess.run(
             command,
-            cwd=str(workspace),
+            cwd=str(scene_workspace),
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
@@ -380,22 +683,17 @@ class DynamicVideoRenderService:
         )
         if completed.returncode != 0:
             raise DynamicVideoRenderError(
-                "Dynamic intro rendering failed. "
+                "Generated scene rendering failed: "
                 + (completed.stderr or completed.stdout or "")
             )
-        return {
-            "command": command,
-            "return_code": completed.returncode,
-            "stdout": completed.stdout or "",
-            "stderr": completed.stderr or "",
-        }
+        return self._process_result(command, completed)
 
-    def _splice_intro(
+    def _extract_static_segment(
         self,
         source_video,
-        dynamic_intro,
         destination,
-        intro_duration,
+        start_seconds,
+        duration_seconds,
         fps,
         width,
         height,
@@ -404,29 +702,18 @@ class DynamicVideoRenderService:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             raise FileNotFoundError("ffmpeg is not available on PATH.")
-
-        duration_text = f"{intro_duration:.6f}"
-        filter_complex = (
-            f"[0:v]scale={width}:{height},fps={fps},"
-            "setsar=1,setpts=PTS-STARTPTS[v0];"
-            f"[1:v]trim=start={duration_text},"
-            f"scale={width}:{height},fps={fps},"
-            "setsar=1,setpts=PTS-STARTPTS[v1];"
-            "[v0][v1]concat=n=2:v=1:a=0[v]"
-        )
         command = [
             ffmpeg,
             "-y",
-            "-i",
-            str(dynamic_intro),
+            "-ss",
+            f"{start_seconds:.6f}",
             "-i",
             str(source_video),
-            "-filter_complex",
-            filter_complex,
-            "-map",
-            "[v]",
-            "-map",
-            "1:a?",
+            "-t",
+            f"{duration_seconds:.6f}",
+            "-an",
+            "-vf",
+            f"scale={width}:{height},fps={fps},setsar=1",
             "-c:v",
             "libx264",
             "-preset",
@@ -435,12 +722,6 @@ class DynamicVideoRenderService:
             "18",
             "-pix_fmt",
             "yuv420p",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-movflags",
-            "+faststart",
             str(destination),
         ]
         completed = subprocess.run(
@@ -452,44 +733,138 @@ class DynamicVideoRenderService:
         )
         if completed.returncode != 0:
             raise DynamicVideoRenderError(
-                "Dynamic video integration failed. "
+                "Static interval extraction failed: "
                 + (completed.stderr or completed.stdout or "")
             )
+        return self._process_result(command, completed)
+
+    def _assemble_segments(
+        self,
+        segment_paths,
+        source_video,
+        destination,
+        timeout_seconds,
+    ):
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            raise FileNotFoundError("ffmpeg is not available on PATH.")
+        concat_file = destination.parent / "segments.txt"
+        concat_file.write_text(
+            "\n".join(
+                f"file '{self._concat_path(path)}'"
+                for path in segment_paths
+            ),
+            encoding="utf-8",
+        )
+        video_only = destination.parent / "video_without_audio.mp4"
+        concatenate_command = [
+            ffmpeg,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_file),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-an",
+            str(video_only),
+        ]
+        concatenate = subprocess.run(
+            concatenate_command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        if concatenate.returncode != 0:
+            raise DynamicVideoRenderError(
+                "Scene concatenation failed: "
+                + (concatenate.stderr or concatenate.stdout or "")
+            )
+
+        audio_command = [
+            ffmpeg,
+            "-y",
+            "-i",
+            str(video_only),
+            "-i",
+            str(source_video),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0?",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            str(destination),
+        ]
+        audio_result = subprocess.run(
+            audio_command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        if audio_result.returncode != 0:
+            raise DynamicVideoRenderError(
+                "Narration attachment failed: "
+                + (audio_result.stderr or audio_result.stdout or "")
+            )
         return {
-            "command": command,
-            "return_code": completed.returncode,
-            "stdout": completed.stdout or "",
-            "stderr": completed.stderr or "",
+            "command": audio_command,
+            "return_code": audio_result.returncode,
+            "stdout": (
+                "CONCATENATION\n"
+                + (concatenate.stdout or "")
+                + "\n"
+                + (concatenate.stderr or "")
+                + "\nAUDIO MUX\n"
+                + (audio_result.stdout or "")
+            ),
+            "stderr": audio_result.stderr or "",
         }
 
     def _find_source_video(self, run_path):
+        preferred_paths = [
+            run_path / "09_video" / "candidate_video.mp4",
+            run_path / "09_video" / "final_video.mp4",
+            run_path / "09_video" / "video.mp4",
+        ]
+        for path in preferred_paths:
+            if path.exists() and path.stat().st_size > 0:
+                return path.resolve()
+
         candidates = []
         for path in run_path.rglob("*.mp4"):
-            lowered = path.name.lower()
-            if "dynamic" in lowered:
+            lowered = str(path).lower()
+            if "10_dynamic_render" in lowered:
                 continue
-            if "preview" in lowered:
+            if "dynamic" in path.name.lower() or "preview" in path.name.lower():
                 continue
             candidates.append(path)
         if not candidates:
             raise FileNotFoundError(
                 f"No existing static MP4 was found under {run_path}."
             )
-        preferred = [
-            path
-            for path in candidates
-            if "final" in path.name.lower()
-            or "candidate" in path.name.lower()
-        ]
-        pool = preferred or candidates
-        pool.sort(
-            key=lambda path: (
-                path.stat().st_size,
-                path.stat().st_mtime,
-            ),
+        candidates.sort(
+            key=lambda path: (path.stat().st_size, path.stat().st_mtime),
             reverse=True,
         )
-        return pool[0].resolve()
+        return candidates[0].resolve()
 
     def _probe_media(self, path):
         ffprobe = shutil.which("ffprobe")
@@ -514,8 +889,8 @@ class DynamicVideoRenderService:
         )
         if completed.returncode != 0:
             raise DynamicVideoRenderError(
-                "ffprobe failed for "
-                f"{path}: {completed.stderr or completed.stdout}"
+                f"ffprobe failed for {path}: "
+                + (completed.stderr or completed.stdout or "")
             )
         return json.loads(completed.stdout)
 
@@ -553,33 +928,73 @@ class DynamicVideoRenderService:
             rate = stream.get("avg_frame_rate") or stream.get("r_frame_rate")
             if rate and rate != "0/0":
                 numerator, denominator = rate.split("/", 1)
-                value = float(numerator) / float(denominator)
-                return max(1, int(round(value)))
+                return max(1, int(round(float(numerator) / float(denominator))))
         return 30
+
+    @staticmethod
+    def _safe_name(value):
+        return re.sub(r"[^A-Za-z0-9_-]", "_", str(value))
+
+    @staticmethod
+    def _concat_path(path):
+        return str(Path(path).resolve()).replace("\\", "/").replace("'", "'\\''")
+
+    @staticmethod
+    def _process_result(command, completed):
+        return {
+            "command": command,
+            "return_code": completed.returncode,
+            "stdout": completed.stdout or "",
+            "stderr": completed.stderr or "",
+        }
+
+    @staticmethod
+    def _format_process_log(scene_id, strategy, result):
+        return "\n".join(
+            [
+                "=" * 72,
+                f"SCENE: {scene_id}",
+                f"STRATEGY: {strategy}",
+                f"RETURN CODE: {result.get('return_code')}",
+                "COMMAND:",
+                " ".join(str(value) for value in result.get("command", [])),
+                "STDOUT:",
+                result.get("stdout", ""),
+                "STDERR:",
+                result.get("stderr", ""),
+            ]
+        )
 
     @staticmethod
     def _markdown(summary, scene_resolution):
         checks = summary["technical_checks"]
-        return "\n".join(
-            [
-                "# Dynamic Video Render Summary",
-                "",
-                f"Status: {summary['status']}",
-                f"Output: `{summary['output_video']}`",
-                f"Source video: `{summary['source_video']}`",
-                f"Dynamic scenes: {summary['dynamic_scene_count']}",
-                f"Fallbacks: {summary['fallback_count']}",
-                f"Technical checks passed: {checks['passed']}",
-                f"Has video stream: {checks['has_video_stream']}",
-                f"Has audio stream: {checks['has_audio_stream']}",
-                f"Duration delta: {checks['duration_delta_seconds']:.3f}s",
-                f"Ready for Phase 7C: {summary['ready_for_phase_7c']}",
-                "",
-                "## Scene Resolution",
-                "",
-                f"- Scene: {scene_resolution['scene_id']}",
-                f"- Component: {scene_resolution['component_name']}",
-                f"- Fallback: {scene_resolution['fallback_component']}",
-                f"- Duration: {scene_resolution['duration_seconds']:.3f}s",
-            ]
-        )
+        lines = [
+            "# Dynamic Video Render Summary",
+            "",
+            f"Status: {summary['status']}",
+            f"Output: `{summary['output_video']}`",
+            f"Source video: `{summary['source_video']}`",
+            f"Dynamic scenes: {summary['dynamic_scene_count']}",
+            f"Static scenes: {summary['static_scene_count']}",
+            f"Runtime fallbacks: {summary['fallback_count']}",
+            f"Technical checks passed: {checks['passed']}",
+            f"Duration delta: {checks['duration_delta_seconds']:.3f}s",
+            f"Ready for Phase 7C: {summary['ready_for_phase_7c']}",
+            "",
+            "## Scene Resolution",
+            "",
+        ]
+        for item in scene_resolution:
+            lines.extend(
+                [
+                    f"### {item['scene_id']}",
+                    f"- Interval: {item['start_seconds']:.3f}s to "
+                    f"{item['end_seconds']:.3f}s",
+                    f"- Requested: {item['requested_strategy']}",
+                    f"- Resolved: {item['resolved_strategy']}",
+                    f"- Component: {item.get('component_name')}",
+                    f"- Fallback: {item.get('fallback_component')}",
+                    "",
+                ]
+            )
+        return "\n".join(lines)

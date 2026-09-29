@@ -1,150 +1,151 @@
-﻿You are selecting content for a polished internal candidate-profile video.
-
+﻿You are selecting content for a premium internal executive candidate-profile MOTION VIDEO.
 The input is a validated structured candidate dossier.
+Return only data conforming exactly to the supplied VideoContent schema.
 
-Your task is to select and condense the most useful professional information into the supplied VideoContent schema.
+ROLE
+Select and condense the strongest professional evidence from the dossier. This is not an independent candidate evaluation, candidate-to-role assessment, or external-role comparison.
 
-This is not an independent candidate evaluation.
+PRIMARY OBJECTIVE
+Create a concise, credible candidate narrative whose selected evidence can be communicated visually as well as through narration.
+Do not select information only because it reads well in prose. Prefer evidence that can create clear visual storytelling opportunities without inventing facts.
 
-Do not compare the candidate with an external role.
+FACTUAL INTEGRITY
+Use only facts explicitly supported by the dossier and retain source references.
+Do not introduce, infer, improve, round, combine, extrapolate or reinterpret unsupported facts.
+Do not convert responsibilities, plans or targets into completed achievements.
 
-Do not create candidate-to-role relevance analysis.
-
-Do not introduce facts that are not present in the input dossier.
-
-CONTENT OBJECTIVE
-
-Create a concise and credible candidate snapshot using information already contained in the dossier.
-
-The video may include:
-
-- Candidate introduction
-- Current or most recent role
-- Executive summary
-- Selected career milestones
-- Quantified career highlights
-- Leadership and organisation scope
-- Functional strengths
-- Stakeholder and people leadership
-- Commercial orientation
-- Availability, when enabled
-- Compensation, only when explicitly enabled
+CONTENT MAY INCLUDE
+- candidate introduction
+- current or most recent role
+- concise executive summary
+- selected career milestones
+- quantified career highlights
+- leadership and organisation scope
+- functional strengths
+- stakeholder and people leadership
+- commercial orientation
+- transformation or business-impact evidence when explicitly supported
+- geographic or portfolio scope when explicitly supported
+- availability when enabled and permitted
+- compensation only when explicitly enabled and permitted
 
 SELECTION PRIORITIES
-
 Prioritise information that is:
+1. explicitly supported by the dossier
+2. professionally significant
+3. distinct from other selected evidence
+4. understandable in concise narration
+5. suitable for concise on-screen communication
+6. useful for communicating scale, progression, leadership, transformation or business impact
+7. supported by source references
+8. visually expressible through an evidence-supported timeline, metric, comparison, hierarchy, diagram, image-led composition or other motion graphic
 
-1. Explicitly supported by the dossier
-2. Professionally significant
-3. Suitable for concise visual communication
-4. Easy to understand when spoken
-5. Useful for presenting leadership scale, career progression, or business impact
-6. Supported by source references
-7. Distinct from other selected information
+VISUAL STORYTELLING BIAS
+When two facts are similarly important, prefer the fact with stronger evidence-supported visualization potential.
+Examples:
+- chronological roles or employer progression -> timeline or milestone path opportunity
+- exact approved metrics -> animated metric, comparison, scale or proportional visualization opportunity
+- supported before/after values -> comparison opportunity
+- explicitly supported leadership structure -> hierarchy or relationship-diagram opportunity
+- explicitly supported geographic/portfolio scope -> scope visualization opportunity
+- approved dossier imagery linked to selected content -> image-led editorial opportunity
 
-Avoid selecting several highlights that communicate the same achievement.
+Do NOT invent a relationship merely because a visualization would be attractive.
+Do NOT manufacture a trend from isolated values.
+Do NOT manufacture chart categories, baselines, time-series points, rankings or comparisons.
+Do NOT imply causality unless the dossier explicitly supports it.
+
+QUANTIFIED EVIDENCE
+Prefer exact or qualified quantitative evidence when professionally meaningful and clearly supported.
+Preserve qualifiers such as approximately, more than, over, nearly and up to.
+Do not improve, normalize or round metrics.
+Where several metrics repeat the same underlying achievement, select the strongest non-duplicative evidence rather than all of them.
 
 CAREER MILESTONES
+Select approximately three to five meaningful milestones when sufficient history exists.
+Do not include every role unless career history is short.
+Preserve employer, title and period exactly as supported.
+Do not merge roles across employers.
+Prefer milestones that together communicate progression, scope change, transformation, leadership expansion or distinctive experience.
 
-Select approximately three to five meaningful career milestones.
+EXECUTIVE SUMMARY
+Select a small set of complementary facts that together establish professional context. Avoid turning the summary into a duplicate of later career and highlights scenes.
+Prefer facts that can be represented through visual hierarchy instead of a paragraph.
 
-Do not include every role unless the career history is very short.
-
-Preserve the correct employer, title, and period.
-
-Do not merge roles held at different companies.
-
-CAREER HIGHLIGHTS
-
-Prefer quantified achievements when the dossier clearly supports them.
-
-Preserve approximate qualifiers such as:
-
-- approximately
-- more than
-- over
-- nearly
-- up to
-
-Do not improve or round metrics.
-
-Do not transform responsibilities into achievements.
-
-Do not present plans or targets as completed outcomes.
-
-LEADERSHIP SCOPE
-
+LEADERSHIP AND ORGANISATION SCOPE
 Use only explicitly supported information for:
+- reporting line
+- direct reports
+- total team size
+- functions led
+- geographic scope
+- business scope
+- budget responsibility
+- portfolio or organisational scope
 
-- Reporting line
-- Direct reports
-- Total team size
-- Functions led
-- Geographic scope
-- Business scope
-- Budget responsibility
+Do not calculate team sizes from organisation charts unless explicitly stated.
+Do not infer reporting relationships.
+When explicit structure exists, preserve the individual entities and relationships needed for a later deterministic diagram.
 
-Do not calculate team sizes from an organisation chart unless the total is explicitly stated.
+TRANSFORMATION AND BUSINESS IMPACT
+Select transformation stories only when the dossier explicitly provides the actions and outcomes.
+Preserve before/after states, sequence, metrics and qualifiers exactly where stated.
+Do not manufacture causal relationships.
 
 STRENGTHS
-
 Summarise strengths already present in the dossier assessment.
-
-Do not add generic praise.
-
-Avoid unsupported superlatives such as:
-
-- exceptional
-- ideal
-- best
-- perfect
-- unmatched
-
+Avoid generic praise, unsupported superlatives and repetition of achievements already selected elsewhere.
 Use measured professional language.
 
-SENSITIVE INFORMATION RULES
+SOURCE ARTIFACT AWARENESS
+When the dossier contains a potentially useful visual source associated with selected professional content, preserve the related factual context and source reference so later artifact planning can consider it.
+Do not identify a person in a photograph or decide that a photograph depicts the candidate. Image identity selection remains a separate human-review step.
 
+NARRATION VS VISUALS
+Select enough evidence for the screen and narration to complement one another.
+The voiceover should not need to read every visible fact.
+Favor selections where concise visuals can carry dates, employers, exact values, milestones or structural relationships while narration provides context.
+
+AVOID REPETITION
+Do not select several facts that communicate substantially the same message.
+Aim for distinct evidence categories across the video, for example progression, scale, measurable impact, leadership scope and strengths, when the dossier supports them.
+
+SENSITIVE INFORMATION
 Never include:
+- personal email
+- personal telephone number
+- residential address
+- identification number
+- signature
+- family information
+- health or medical information
+- private personal circumstances
+- restricted_pii
+- sensitive_personal
 
-- Personal email address
-- Personal telephone number
-- Residential address
-- Identification number
-- Signature
-- Family information
-- Health or medical information
-- Private personal circumstances
-- Content classified as restricted_pii
-- Content classified as sensitive_personal
-
-Only include compensation when include_compensation is true and the source compensation object permits display.
-
-Only include availability when include_availability is true and the source availability object permits display.
+Include compensation only when include_compensation is true and the source compensation object permits display.
+Include availability only when include_availability is true and the source availability object permits display.
 
 DURATION
+Use requested video mode only as guidance:
+snapshot: approximately 25 to 35 seconds
+standard: approximately 40 to 55 seconds
+detailed: approximately 60 to 75 seconds
+automatic: choose a suitable duration from the quantity and quality of supported professional evidence
 
-Use the requested video mode as guidance:
+Do not force weak or repetitive information merely to increase duration.
+Prefer a shorter visually strong narrative over a longer text-heavy one.
 
-snapshot:
-Approximately 25 to 35 seconds.
-
-standard:
-Approximately 40 to 55 seconds.
-
-detailed:
-Approximately 60 to 75 seconds.
-
-automatic:
-Select a suitable duration based on the quantity and quality of available professional content.
-
-Do not force weak or repetitive information into the video to increase duration.
-
-OUTPUT RULES
+FINAL SELF-CHECK
+Before returning, verify:
+- every selected claim is supported and source-referenced
+- selected facts are non-duplicative
+- meaningful metrics were not ignored
+- meaningful chronology was preserved for timeline use
+- supported leadership/organisation relationships were preserved for diagram use
+- useful transformation evidence was preserved when available
+- no unsupported visualization relationship has been implied
+- selected content can support a visually varied motion video rather than only prose and cards
 
 Return only data conforming to the supplied VideoContent schema.
-
-Do not include Markdown.
-
-Do not include explanations before or after the structured output.
-
-Ensure selected factual claims retain their source references.
+Do not include Markdown or explanations.

@@ -122,3 +122,90 @@ renderer/remotion-project/.phase5_workspaces/
 renderer/remotion-project/.phase5_repair_workspaces/
 renderer/remotion-project/.phase6_preview_workspaces/
 renderer/remotion-project/.phase7_dynamic_render_workspaces/
+
+
+# ============================================================
+# Runtime pipeline outputs
+# ============================================================
+
+runs/
+outputs/
+
+# ============================================================
+# Python
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environment
+env/
+venv/
+.venv/
+
+# ============================================================
+# Secrets / local configuration
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+# ============================================================
+# Node / Remotion
+# ============================================================
+
+node_modules/
+renderer/remotion-project/node_modules/
+
+# Remotion temporary/cache directories
+renderer/remotion-project/.remotion/
+renderer/remotion-project/.cache/
+renderer/remotion-project/.phase6_preview_workspaces/
+renderer/remotion-project/.phase7_dynamic_render_workspaces/
+
+# Temporary render props generated per run
+renderer/remotion-project/render-props.json
+
+# ============================================================
+# Generated renderer assets
+# ============================================================
+
+renderer/remotion-project/public/generated/
+
+# ============================================================
+# AI-generated runtime components
+# ============================================================
+
+# Historical generated components for individual runs
+renderer/remotion-project/src/generated-runs/
+
+# Active generated component set is recreated by the publisher
+renderer/remotion-project/src/generated-current/components/
+renderer/remotion-project/src/generated-current/generatedManifest.json
+
+# ============================================================
+# Rendered media
+# ============================================================
+
+*.mp4
+*.webm
+*.mov
+
+# Generated audio
+*.mp3
+*.wav
+
+# ============================================================
+# OS / IDE
+# ============================================================
+
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
