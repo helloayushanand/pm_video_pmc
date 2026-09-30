@@ -99,6 +99,7 @@ class ArtifactService:
                     extracted_candidates=extracted_candidates,
                     specification_directory=specification_directory,
                     generated_directory=generated_directory,
+                    approved_directory=approved_directory,
                 )
             )
 
@@ -157,10 +158,18 @@ class ArtifactService:
                 fallback_strategy = requirement.get("fallback_strategy") or (
                     "Use an approved typography-only or Remotion-native fallback."
                 )
+
+                # POC policy: approved_local_asset is resolved automatically from
+                # extracted dossier images. Other sensitive strategies may retain
+                # their explicit review behavior.
                 requires_human_approval = (
-                    artifact_type in {ArtifactType.PORTRAIT, ArtifactType.LOGO}
-                    or factual_status == FactualStatus.MIXED.value
+                    source_strategy != ArtifactStrategy.APPROVED_LOCAL_ASSET.value
+                    and (
+                        artifact_type in {ArtifactType.PORTRAIT, ArtifactType.LOGO}
+                        or factual_status == FactualStatus.MIXED.value
+                    )
                 )
+
                 artifacts.append(
                     ArtifactPlanItem(
                         artifact_id=artifact_id,
@@ -256,7 +265,7 @@ class ArtifactService:
                             "portrait_likelihood": self._calculate_portrait_likelihood(
                                 width, height, destination.stat().st_size
                             ),
-                            "requires_review": True,
+                            "requires_review": False,
                         }
                     )
         finally:
@@ -290,6 +299,7 @@ class ArtifactService:
         extracted_candidates,
         specification_directory,
         generated_directory,
+        approved_directory,
     ):
         base_kwargs = {
             "artifact_id": artifact.artifact_id,
@@ -330,12 +340,11 @@ class ArtifactService:
                 generated_directory,
             )
         if artifact.source_strategy == ArtifactStrategy.APPROVED_LOCAL_ASSET:
-            return ArtifactRecord(
-                **base_kwargs,
-                status=ArtifactStatus.NEEDS_REVIEW,
-                approved=False,
-                source_description="Approved local asset has not yet been attached.",
-                validation_warnings=["Attach and approve a local asset."],
+            return self._prepare_auto_local_asset(
+                artifact=artifact,
+                base_kwargs=base_kwargs,
+                extracted_candidates=extracted_candidates,
+                approved_directory=approved_directory,
             )
         return ArtifactRecord(
             **base_kwargs,
@@ -343,6 +352,77 @@ class ArtifactService:
             approved=False,
             source_description="Unsupported artifact strategy.",
             validation_errors=[f"No processor exists for {artifact.source_strategy.value}."],
+        )
+
+    def _prepare_auto_local_asset(
+        self,
+        artifact,
+        base_kwargs,
+        extracted_candidates,
+        approved_directory,
+    ):
+        """POC: automatically select the highest-ranked extracted image."""
+        if not extracted_candidates:
+            return ArtifactRecord(
+                **base_kwargs,
+                status=ArtifactStatus.FALLBACK,
+                approved=False,
+                source_description="No extracted dossier image was available.",
+                validation_warnings=["Use the configured fallback strategy."],
+            )
+
+        selected = extracted_candidates[0]
+        selected_path = Path(selected["path"]).expanduser().resolve()
+        if not selected_path.exists() or not selected_path.is_file():
+            return ArtifactRecord(
+                **base_kwargs,
+                status=ArtifactStatus.FAILED,
+                approved=False,
+                source_description="Automatically selected dossier image is unavailable.",
+                validation_errors=[f"Selected file does not exist: {selected_path}"],
+            )
+
+        suffix = selected_path.suffix.lower() or ".png"
+        approved_path = approved_directory / f"{artifact.artifact_id}{suffix}"
+        shutil.copy2(selected_path, approved_path)
+
+        try:
+            with Image.open(approved_path) as image:
+                width = int(image.width)
+                height = int(image.height)
+                image.verify()
+        except Exception as error:
+            return ArtifactRecord(
+                **base_kwargs,
+                status=ArtifactStatus.FAILED,
+                approved=False,
+                local_path=str(approved_path),
+                source_description="Automatically selected dossier image failed validation.",
+                validation_errors=[str(error)],
+            )
+
+        mime_type = mimetypes.guess_type(approved_path.name)[0] or "image/png"
+        logger.info(
+            "POC auto-selected extracted image %s for artifact %s (portrait score %.3f).",
+            selected.get("filename"),
+            artifact.artifact_id,
+            float(selected.get("portrait_likelihood", 0.0)),
+        )
+        return ArtifactRecord(
+            **base_kwargs,
+            status=ArtifactStatus.APPROVED,
+            approved=True,
+            local_path=str(approved_path),
+            mime_type=mime_type,
+            width=width,
+            height=height,
+            file_size_bytes=approved_path.stat().st_size,
+            source_description=(
+                "POC automatic local-asset selection: highest-ranked extracted "
+                f"dossier image ({selected.get('filename')})."
+            ),
+            validation_errors=[],
+            validation_warnings=[],
         )
 
     def _prepare_deterministic_specification(self, artifact, base_kwargs, specification_directory):

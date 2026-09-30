@@ -1,27 +1,27 @@
 import type React from "react";
 import type {GeneratedSceneProps} from "../dynamic-sdk";
 
-import {PortraitEditorialLead as GeneratedComponent1} from "./components/s1_intro_PortraitEditorialLead";
-import {AsymmetricExecSummaryColumn as GeneratedComponent2} from "./components/s2_execsum_AsymmetricExecSummaryColumn";
-import {HorizontalMilestoneTimeline as GeneratedComponent3} from "./components/s3_timeline_HorizontalMilestoneTimeline";
-import {EventRelaunchIllustration as GeneratedComponent4} from "./components/s4_milestone_flipkart_EventRelaunchIllustration";
-import {ProportionalMetricsCluster as GeneratedComponent5} from "./components/s5_quantified_ProportionalMetricsCluster";
+import {AsymmetricEditorial_Keywords as GeneratedComponent1} from "./components/scene_02_exec_summary_AsymmetricEditorial_Keywords";
+import {HorizontalCareerTimeline_3node as GeneratedComponent2} from "./components/scene_03_timeline_HorizontalCareerTimeline_3node";
+import {AsymmetricMetricsGrid_Animated as GeneratedComponent3} from "./components/scene_04_metrics_AsymmetricMetricsGrid_Animated";
+import {NetworkOrg_GeoRibbon as GeneratedComponent4} from "./components/scene_05_leadership_NetworkOrg_GeoRibbon";
+import {TwoColumn_Strengths_Icons as GeneratedComponent5} from "./components/scene_06_strengths_TwoColumn_Strengths_Icons";
 
 export const generatedSceneRegistry: Record<
   string,
   React.FC<GeneratedSceneProps>
 > = {
-  "s1_intro": GeneratedComponent1,
-  "s2_execsum": GeneratedComponent2,
-  "s3_timeline": GeneratedComponent3,
-  "s4_milestone_flipkart": GeneratedComponent4,
-  "s5_quantified": GeneratedComponent5,
+  "scene_02_exec_summary": GeneratedComponent1,
+  "scene_03_timeline": GeneratedComponent2,
+  "scene_04_metrics": GeneratedComponent3,
+  "scene_05_leadership": GeneratedComponent4,
+  "scene_06_strengths": GeneratedComponent5,
 };
 
 export const generatedSceneFallbackRegistry: Record<string, string> = {
-  "s1_intro": "existing_component_variant",
-  "s2_execsum": "typography_only",
-  "s3_timeline": "deterministic_diagram",
-  "s4_milestone_flipkart": "image_generation",
-  "s5_quantified": "deterministic_chart",
+  "scene_02_exec_summary": "typography_only",
+  "scene_03_timeline": "typography_only",
+  "scene_04_metrics": "remotion_native",
+  "scene_05_leadership": "deterministic_diagram",
+  "scene_06_strengths": "typography_only",
 };

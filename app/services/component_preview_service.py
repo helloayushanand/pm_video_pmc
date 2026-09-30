@@ -34,7 +34,7 @@ class ComponentPreviewService:
         self,
         run_directory,
         output_directory,
-        run_visual_qa=True,
+        run_visual_qa=False,
         timeout_seconds=180,
     ):
         run_path = Path(run_directory).expanduser().resolve()
@@ -136,8 +136,11 @@ class ComponentPreviewService:
             "failed_count": sum(
                 1 for item in results if item.get("status") == "failed"
             ),
+            "runtime_smoke_passed_count": sum(
+                1 for item in results if item.get("preview_rendered")
+            ),
             "ready_for_phase_7": bool(results)
-            and all(item.get("visual_approved") for item in results),
+            and all(item.get("preview_rendered") for item in results),
             "results": results,
         }
         save_json(summary, output_path / "preview_qa_report.json")
@@ -220,21 +223,14 @@ class ComponentPreviewService:
             run_path,
             compiled_item["scene_id"],
         )
+        # P0 #4: one deterministic representative-frame smoke render.
+        # The objective is runtime safety, not visual scoring.
         frame_map = {
-            "early": max(0, int(duration_frames * 0.10)),
-            "middle": max(0, int(duration_frames * 0.50)),
-            "peak": max(
+            "smoke": max(
                 0,
                 min(
                     duration_frames - 1,
                     int(duration_frames * peak_percentage),
-                ),
-            ),
-            "late": max(
-                0,
-                min(
-                    duration_frames - 1,
-                    int(duration_frames * 0.90),
                 ),
             ),
         }
@@ -636,17 +632,17 @@ class ComponentPreviewService:
         invalid = []
         dimensions = []
         errors = []
-        labels = {item["label"] for item in rendered}
+        labels = { item["label"] for item in rendered }
 
-        for label in {
-            "early",
-            "middle",
-            "peak",
-            "late",
-        }:
+        expected_labels = {
+            "smoke"
+        }
+
+        for label in expected_labels:
             if label not in labels:
-                missing.append(label)
-
+                missing.append(
+                    label
+                )
         for item in rendered:
             path = Path(item["path"])
             if not path.exists() or path.stat().st_size == 0:
@@ -669,7 +665,7 @@ class ComponentPreviewService:
                 errors.append(f"{path}: {error}")
 
         valid = (
-            len(rendered) == expected_count
+            len(rendered) == 1
             and not missing
             and not invalid
             and not dimensions

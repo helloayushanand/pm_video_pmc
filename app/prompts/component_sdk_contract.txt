@@ -1,0 +1,456 @@
+CANONICAL GENERATED COMPONENT SDK CONTRACT
+
+This contract is authoritative for every generated component and every generated-component repair.
+
+If another instruction conflicts with this contract, follow this contract.
+
+============================================================
+GENERATED COMPONENT TYPE
+============================================================
+
+Every generated scene component must use:
+
+React.FC<GeneratedSceneProps>
+
+GeneratedSceneProps has this exact conceptual structure:
+
+{
+  context: SceneContext;
+  content: Record<string, unknown>;
+}
+
+SceneContext contains:
+
+sceneId: string
+candidateName: string
+durationInFrames: number
+fps: number
+theme: DynamicTheme
+artifacts: ArtifactManifest
+
+Recommended access:
+
+const {context, content} = props;
+
+const {
+  sceneId,
+  candidateName,
+  durationInFrames,
+  fps,
+  theme,
+  artifacts,
+} = context;
+
+============================================================
+DYNAMIC THEME CONTRACT
+============================================================
+
+DynamicTheme contains only:
+
+themeId
+background
+surface
+surfaceSecondary
+foreground
+foregroundMuted
+accent
+accentSecondary
+border
+displayFont
+bodyFont
+confidentialityText
+
+Do not invent additional DynamicTheme properties.
+
+Additional decorative colors may be local CSS constants when necessary.
+
+============================================================
+ARTIFACT MANIFEST CONTRACT
+============================================================
+
+context.artifacts is the complete ArtifactManifest.
+
+ArtifactManifest has this structure:
+
+{
+  artifacts: ApprovedArtifact[]
+}
+
+ArtifactManifest is NOT a dictionary keyed by artifact ID.
+
+NEVER write:
+
+artifacts["artifact_id"]
+
+context.artifacts["artifact_id"]
+
+(artifacts as any)["artifact_id"]
+
+(context.artifacts as any)["artifact_id"]
+
+NEVER derive a fake ArtifactManifest.
+
+NEVER pass an individual artifact where ArtifactManifest is expected.
+
+NEVER use "as any" to bypass this contract.
+
+============================================================
+APPROVED ARTIFACT
+============================================================
+
+ApprovedArtifact conceptually contains:
+
+artifactId
+assetType
+rendererPath
+approved
+altText
+width
+height
+sourceReference
+
+Only use artifacts supplied in the scene package.
+
+Never invent an artifact ID.
+
+============================================================
+ARTIFACT STRATEGY CONTRACT
+============================================================
+
+Artifact rendering is determined by source strategy.
+
+APPROVED_LOCAL_ASSET
+
+If:
+- approved is true
+- renderer_path exists
+
+ApprovedAsset may be used.
+
+
+IMAGE_GENERATION
+
+If:
+- approved is true
+- renderer_path exists
+
+ApprovedAsset may be used.
+
+
+TYPOGRAPHY_ONLY
+
+DO NOT use ApprovedAsset.
+
+Implement the requested visual using:
+
+- text
+- CSS
+- React elements
+- SVG
+- approved Dynamic SDK primitives
+
+
+REMOTION_NATIVE
+
+DO NOT use ApprovedAsset.
+
+Implement using native React/Remotion visual geometry.
+
+
+DETERMINISTIC_CHART
+
+DO NOT use ApprovedAsset.
+
+Implement the chart using:
+
+- approved facts
+- exact approved values
+- React
+- CSS
+- SVG
+- approved SDK primitives
+
+Never fabricate values, trends or proportions.
+
+
+DETERMINISTIC_DIAGRAM
+
+DO NOT use ApprovedAsset.
+
+Implement the diagram using:
+
+- approved facts
+- React
+- CSS
+- SVG
+- approved SDK primitives
+
+This includes:
+
+- timelines
+- organisation diagrams
+- networks
+- hierarchy graphics
+- flow structures
+
+
+RENDERER_PATH RULE
+
+If renderer_path is null:
+
+DO NOT use ApprovedAsset.
+
+============================================================
+APPROVEDASSET CONTRACT
+============================================================
+
+ApprovedAsset may only be used for renderer-backed binary assets.
+
+ApprovedAsset receives:
+
+artifactId
+manifest
+fit
+style
+
+The manifest must be the complete ArtifactManifest.
+
+Correct:
+
+const {artifacts} = context;
+
+React.createElement(ApprovedAsset, {
+  artifactId: "approved_literal_artifact_id",
+  manifest: artifacts,
+  fit: "cover",
+})
+
+Also correct:
+
+React.createElement(ApprovedAsset, {
+  artifactId: "approved_literal_artifact_id",
+  manifest: context.artifacts,
+})
+
+Incorrect:
+
+const manifest =
+  artifacts["approved_literal_artifact_id"];
+
+Incorrect:
+
+manifest: individualArtifact
+
+Incorrect:
+
+manifest: undefined
+
+Incorrect:
+
+manifest: artifacts.artifacts[0]
+
+ApprovedAsset performs artifact lookup itself.
+
+============================================================
+ALLOWED IMPORTS
+============================================================
+
+Generated component source may import only from:
+
+react
+remotion
+@/dynamic-sdk
+
+Do not import any external dependency.
+
+============================================================
+REMOTION CONTRACT
+============================================================
+
+Use deterministic frame-based animation.
+
+Preferred Remotion APIs:
+
+useCurrentFrame
+useVideoConfig
+interpolate
+spring
+
+Only use APIs explicitly imported.
+
+Do not use randomness.
+
+Do not use browser timers.
+
+Do not use network-dependent behavior.
+
+Do not use wall-clock time.
+
+spring must receive a valid positive fps.
+
+interpolate input ranges must be ordered and valid.
+
+============================================================
+DYNAMIC SDK PRIMITIVES
+============================================================
+
+Use only primitives listed in scene_package.allowed_primitives.
+
+Never assume a primitive exists.
+
+Common contracts:
+
+SceneFrame
+- theme required
+- contains scene children
+- background optional
+- sceneLabel optional
+
+SafeArea
+- contains children
+- accepts only documented safe-area props
+
+OverflowBoundary
+- contains children
+- accepts only documented props
+
+SectionLabel
+- theme required
+- renders concise label content
+
+DisplayTitle
+- theme required
+- complete title-rendering primitive
+
+BodyCopy
+- theme required
+- body-copy primitive
+
+AutoFitText
+- text required
+- theme required
+- complete text-rendering primitive
+
+Do not unnecessarily nest AutoFitText inside DisplayTitle.
+
+MetricValue
+- value required
+- theme required
+- label optional
+- emphasis optional
+- align optional
+
+MetricCard
+- use only documented metric props
+
+ApprovedAsset
+- follow ApprovedAsset contract above
+
+FadeReveal
+- use only documented timing props
+
+SlideReveal
+- use only documented direction, distance and timing props
+
+StaggerGroup
+- use only documented stagger/reveal props
+
+ConfidentialityLabel
+- text required
+- theme required
+
+============================================================
+SOURCE SAFETY
+============================================================
+
+Forbidden:
+
+filesystem access
+path access
+process
+environment variables
+shell commands
+network calls
+fetch
+WebSocket
+XMLHttpRequest
+require
+eval
+Function constructor
+dynamic import
+external dependencies
+CSS imports
+browser storage
+HTML injection
+random values
+unsupported facts
+unsupported metrics
+unsupported relationships
+generated candidate portraits
+generated company logos
+
+============================================================
+TYPE SAFETY
+============================================================
+
+Do not use:
+
+as any
+
+to suppress SDK or TypeScript problems.
+
+Every identifier must be defined.
+
+Every imported symbol must exist.
+
+Every React.createElement prop object must match the target component.
+
+Every Remotion function used must be imported.
+
+Every SDK primitive must receive documented props only.
+
+============================================================
+REACT.CREATEELEMENT
+============================================================
+
+Prefer React.createElement instead of JSX.
+
+For ordinary DOM and SVG elements, use valid React DOM or SVG props.
+
+For SDK primitives, use only documented SDK props.
+
+============================================================
+FINAL CONTRACT CHECK
+============================================================
+
+Before returning generated or repaired source, verify:
+
+1. The requested component is exported exactly.
+
+2. The source uses React.FC<GeneratedSceneProps>.
+
+3. Imports come only from react, remotion or @/dynamic-sdk.
+
+4. All identifiers are defined.
+
+5. DynamicTheme uses only documented fields.
+
+6. context.artifacts is treated as ArtifactManifest.
+
+7. ArtifactManifest is never indexed directly by artifact ID.
+
+8. No "as any" bypass exists.
+
+9. ApprovedAsset is used only for approved renderer-backed binary assets.
+
+10. ApprovedAsset receives the complete context.artifacts manifest.
+
+11. renderer_path null artifacts never use ApprovedAsset.
+
+12. typography_only is rendered natively.
+
+13. remotion_native is rendered natively.
+
+14. deterministic_chart is rendered natively.
+
+15. deterministic_diagram

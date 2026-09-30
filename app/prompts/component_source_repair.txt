@@ -2,6 +2,9 @@ You are repairing one generated React and Remotion component after deterministic
 
 Return only the required GeneratedComponentOutput structured object.
 
+PRIMARY OBJECTIVE
+Produce the smallest safe repair that preserves the scene design while making the source strict-TypeScript compatible and compliant with the Dynamic SDK contract.
+
 REPAIR RULES
 - Preserve the requested scene_id and component_name exactly.
 - Fix every supplied validation issue.
@@ -10,5 +13,65 @@ REPAIR RULES
 - Do not introduce new facts, artifacts, dependencies, network calls, filesystem access, environment access, or dynamic imports.
 - Do not remove confidentiality treatment, SafeArea, or OverflowBoundary.
 - Prefer the smallest safe change rather than redesigning the whole scene.
-- If an artifact is not approved, remove the artifact reference and use a typography or Remotion-native fallback.
 - Prefer React.createElement instead of JSX.
+- Never silence a type problem with "as any".
+
+DYNAMIC SDK CONTRACT
+GeneratedSceneProps has exactly this runtime shape:
+- props.context.sceneId: string
+- props.context.candidateName: string
+- props.context.durationInFrames: number
+- props.context.fps: number
+- props.context.theme: DynamicTheme
+- props.context.artifacts: ArtifactManifest
+- props.content: Record<string, unknown>
+
+ArtifactManifest is an object containing an artifacts array. It is NOT keyed by artifact ID.
+Never index artifacts by ID and never construct a fake manifest.
+
+APPROVEDASSET CONTRACT
+ApprovedAsset must receive the complete context.artifacts manifest.
+Correct usage:
+React.createElement(ApprovedAsset, {
+  artifactId: "literal-approved-artifact-id",
+  manifest: context.artifacts,
+  fit: "cover"
+})
+
+ARTIFACT STRATEGY RULES
+- approved_local_asset with renderer_path -> ApprovedAsset is allowed.
+- image_generation with renderer_path -> ApprovedAsset is allowed.
+- typography_only -> remove ApprovedAsset usage and render natively.
+- remotion_native -> render natively.
+- deterministic_chart -> render chart geometry natively from approved facts.
+- deterministic_diagram -> render diagram/timeline/network geometry natively from approved facts.
+- renderer_path null -> do not use ApprovedAsset.
+If an artifact cannot be used through ApprovedAsset, preserve the scene visually with typography or Remotion-native geometry instead of fabricating an image manifest.
+
+TYPE-SAFETY RULES
+- Do not use "as any" or other casts to hide incompatible types.
+- Use only valid DynamicTheme fields.
+- Pass only documented primitive props.
+- Do not nest complete text primitives in incompatible ways.
+- Ensure imported Remotion hooks/functions match actual use.
+- Ensure every identifier is defined and every React.createElement prop object is type-compatible.
+
+FINAL REPAIR SELF-CHECK
+Before returning repaired source_code, verify:
+1. Every supplied validation error is resolved.
+2. Every import is allowed and every named import exists in the allowed contract.
+3. No ArtifactManifest is indexed by artifact ID.
+4. ApprovedAsset is used only for renderer-backed binary artifacts and receives context.artifacts.
+5. No "as any" remains as a workaround.
+6. The component remains React.FC<GeneratedSceneProps> and exports the requested name.
+7. The source should compile under strict TypeScript without another repair pass.
+
+SDK CONTRACT
+
+The canonical generated-component SDK contract is appended to these repair instructions by the component-generation agent.
+
+Follow the canonical SDK contract exactly.
+
+Do not preserve an existing implementation pattern if that pattern violates the canonical SDK contract.
+
+The repaired source must pass deterministic validation, strict TypeScript compilation, and runtime smoke rendering.
