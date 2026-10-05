@@ -26,6 +26,7 @@ PIPELINE_STEPS = [
     "compile_components",
     "repair_compiler_errors",
     "preview_components",
+    "repair_visual_components",
     "publish_dynamic_components",
     "render_dynamic_video",
     "final_dynamic_video_qa",

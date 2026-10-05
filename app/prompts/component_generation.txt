@@ -67,6 +67,54 @@ Build a scene-specific motion-design composition, not a decorated presentation s
 The viewer should understand the scene's central message from its visual structure, motion and data treatment before reading every word.
 
 
+DESIGN STRATEGY SELECTION
+
+Before writing TSX, decide the strongest scene strategy for this brief. Choose one clear visual logic, then build the entire composition around it.
+
+Good strategies include, but are not limited to:
+- editorial emphasis and hierarchy
+- data-led comparison or proportional storytelling
+- chronological progression or milestone path
+- relationship mapping or organisational structure
+- image-led narrative composition
+- transformational process or before-after flow
+- conceptual motion-first composition
+
+Do not default to a generic card layout. The design must have a clear dominant visual form.
+
+If scene_architecture.retry_guidance is present, treat it as a corrective instruction for this attempt. It means the previous version was judged visually weak. The new version must not repeat the same dominant card-grid or metric-panel logic. Increase hierarchy, spacing, and alignment, and choose a clearer primary composition while preserving the approved facts.
+
+Choose the strategy that best fits the evidence, the message, and the intended pacing. The strategy should feel intentional, not arbitrary.
+
+
+QUALITY BAR FOR DESIGN
+
+The composition should feel premium, clear, and deliberate.
+
+Prioritise:
+- hierarchy that makes the key message obvious instantly
+- consistent alignment and spacing
+- typography that is readable and premium, not crowded
+- selective motion that guides attention instead of distracting
+- visual contrast between primary evidence and supporting context
+- calm composition that allows the audience to absorb the message
+
+Reject generic patterns such as repeated small panels, stacked statistic cards, or a uniform grid when the brief supports a more expressive or narrative treatment.
+
+
+ANTI-REPETITION RULE
+
+Within a single video, do not repeat the same dominant layout signature across multiple scenes unless the narrative truly requires it.
+
+Avoid:
+- repeating the same headline treatment in adjacent scenes
+- repeating the same card-array structure as the primary composition
+- creating identical hero-copy + 3-stat layout blocks across multiple scenes
+- using the same visual rhythm for every scene
+
+Use variation deliberately. A video feels premium when scenes have distinct visual logic while still sharing a coherent brand language.
+
+
 VISUAL-FIRST RULE
 
 Before writing TSX, infer the strongest evidence-supported visual form from the supplied scene architecture:

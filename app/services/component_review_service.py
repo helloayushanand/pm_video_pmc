@@ -24,6 +24,118 @@ class ComponentReviewError(Exception):
 class ComponentReviewService:
     """Create review packages and enforce source-bound approvals."""
 
+    MIN_DESIGN_QUALITY_SCORE = 0.6
+    APPROVE_DESIGN_QUALITY_SCORE = 0.75
+    STRONG_LAYOUT_PATTERNS = (
+        "sceneframe",
+        "safearea",
+        "stack",
+        "splitlayout",
+        "sectionlabel",
+        "overflowboundary",
+        "faderesveal",
+        "slidereveal",
+        "staggergroup",
+    )
+    WEAK_LAYOUT_PATTERNS = (
+        "metriccard",
+        "card",
+        "grid",
+        "panel",
+        "three-card",
+        "four-card",
+    )
+
+    @staticmethod
+    def _quality_action_for_score(score):
+        """Convert a design quality score into an operational decision.
+
+        Strong scenes are approved, borderline scenes are retried, and weak ones
+        are rejected. This prevents a hard template lock while still keeping the
+        pipeline from publishing obviously poor work.
+        """
+
+        normalized = max(0.0, min(1.0, float(score)))
+        if normalized >= ComponentReviewService.APPROVE_DESIGN_QUALITY_SCORE:
+            return "approve"
+        if normalized >= ComponentReviewService.MIN_DESIGN_QUALITY_SCORE:
+            return "retry"
+        return "reject"
+
+    @staticmethod
+    def _evaluate_design_quality(source_text, scene_input):
+        """Return a lightweight aesthetic quality score for a generated scene.
+
+        The goal is not to replace visual QA. It is to reject obviously weak,
+        repetitive, or generic compositions before they advance to publication.
+        """
+
+        normalized = (source_text or "").lower()
+        strong_hits = [
+            pattern for pattern in ComponentReviewService.STRONG_LAYOUT_PATTERNS
+            if pattern in normalized
+        ]
+        weak_hits = [
+            pattern for pattern in ComponentReviewService.WEAK_LAYOUT_PATTERNS
+            if pattern in normalized
+        ]
+
+        score = 0.5
+
+        if strong_hits:
+            score += min(0.35, 0.08 * len(strong_hits))
+
+        if weak_hits:
+            score -= min(0.35, 0.10 * len(weak_hits))
+
+        repeated_div_count = normalized.count("<div") + normalized.count("div>")
+        if repeated_div_count > 12:
+            score -= 0.2
+
+        if "metriccard" in normalized and normalized.count("metriccard") >= 3:
+            score -= 0.2
+
+        if any(
+            pattern in normalized
+            for pattern in (
+                "sceneframe",
+                "safearea",
+                "stack",
+                "splitlayout",
+                "sectionlabel",
+            )
+        ):
+            score += 0.1
+
+        if "approvedasset" in normalized and (
+            "sceneframe" in normalized or "safearea" in normalized
+        ):
+            score += 0.1
+
+        if not strong_hits and not weak_hits:
+            score -= 0.2
+
+        score = max(0.0, min(1.0, score))
+        passed = score >= ComponentReviewService.MIN_DESIGN_QUALITY_SCORE
+        action = ComponentReviewService._quality_action_for_score(score)
+
+        issues = []
+        if action == "reject":
+            issues.append("weak_visual_structure")
+
+        if weak_hits:
+            issues.append("repetitive_card_pattern")
+
+        if not strong_hits:
+            issues.append("missing_compositional_structure")
+
+        return {
+            "score": round(score, 2),
+            "passed": passed,
+            "action": action,
+            "issues": issues,
+        }
+
     def prepare_review(self, run_directory, output_directory):
         run_path = Path(run_directory).expanduser().resolve()
         output_path = Path(output_directory).expanduser().resolve()
@@ -118,6 +230,8 @@ class ComponentReviewService:
             else None
         )
         validation = validate_generated_source(source_text, scene_input)
+        design_quality = self._evaluate_design_quality(source_text, scene_input)
+        quality_action = design_quality["action"]
         imports = validation.discovered_imports
         component = result.get("generated_component") or {}
         status = result.get("status", "unknown")
@@ -129,6 +243,7 @@ class ComponentReviewService:
             source_hash=source_hash,
             validation_passed=validation.valid,
             source_exists=source_exists,
+            design_quality_action=quality_action,
         )
 
         review_package = {
@@ -149,6 +264,11 @@ class ComponentReviewService:
             "generation_attempts": result.get("generation_attempts", 0),
             "repair_attempts": result.get("source_repair_attempts", 0),
             "source_validation": validation.model_dump(mode="json"),
+            "design_quality": design_quality,
+            "design_quality_score": design_quality["score"],
+            "design_quality_passed": design_quality["passed"],
+            "design_quality_action": quality_action,
+            "retry_recommended": quality_action == "retry",
             "approval_file": str(approval_path),
             "approval_status": approval_status,
             "approval": approval,
@@ -156,6 +276,7 @@ class ComponentReviewService:
                 source_exists
                 and validation.valid
                 and status == "ready_for_compilation"
+                and quality_action == "approve"
             ),
             "review_checklist": [
                 "Imports are limited to react, remotion, and @/dynamic-sdk.",
@@ -181,11 +302,16 @@ class ComponentReviewService:
         source_hash,
         validation_passed,
         source_exists,
+        design_quality_action="approve",
     ):
         if not source_exists:
             return "source_missing"
         if not validation_passed:
             return "validation_failed"
+        if design_quality_action == "reject":
+            return "quality_failed"
+        if design_quality_action == "retry":
+            return "quality_retry"
         if approval is None:
             return "pending_review"
         if approval.get("source_sha256") != source_hash:
@@ -234,10 +360,19 @@ class ComponentReviewService:
         stale_count = sum(
             1 for item in packages if item["approval_status"] == "stale_approval"
         )
+        quality_retry_count = sum(
+            1 for item in packages if item.get("design_quality_action") == "retry"
+        )
+        quality_failed_count = sum(
+            1
+            for item in packages
+            if item.get("design_quality_action") == "reject"
+        )
         blocked_count = sum(
             1
             for item in packages
-            if item["approval_status"] in {"source_missing", "validation_failed"}
+            if item["approval_status"]
+            in {"source_missing", "validation_failed", "quality_failed", "quality_retry"}
         )
         return {
             "component_count": len(packages),
@@ -245,12 +380,16 @@ class ComponentReviewService:
             "pending_count": pending_count,
             "rejected_count": rejected_count,
             "stale_approval_count": stale_count,
+            "quality_retry_count": quality_retry_count,
+            "quality_failed_count": quality_failed_count,
             "blocked_count": blocked_count,
             "ready_for_phase_5": (
                 approved_count == len(packages)
                 and len(packages) > 0
                 and blocked_count == 0
                 and stale_count == 0
+                and quality_retry_count == 0
+                and quality_failed_count == 0
             ),
             "approved_components_file_count": approved_components[
                 "approved_count"
@@ -267,6 +406,8 @@ class ComponentReviewService:
             f"Pending: {summary['pending_count']}",
             f"Rejected: {summary['rejected_count']}",
             f"Stale approvals: {summary['stale_approval_count']}",
+            f"Quality retry: {summary.get('quality_retry_count', 0)}",
+            f"Quality failed: {summary.get('quality_failed_count', 0)}",
             f"Blocked: {summary['blocked_count']}",
             f"Ready for Phase 5: {summary['ready_for_phase_5']}",
             "",
@@ -282,6 +423,7 @@ class ComponentReviewService:
                     f"- Source: `{package['source_file']}`",
                     f"- SHA-256: `{package['source_sha256']}`",
                     f"- Source validation: {package['source_validation']['valid']}",
+                    f"- Design quality: {package['design_quality_score']} ({package['design_quality_action']})",
                     f"- Imports: {', '.join(package['imports'])}",
                     f"- Used primitives: {', '.join(package['used_primitives'])}",
                     f"- Used artifacts: {', '.join(package['used_artifacts'])}",

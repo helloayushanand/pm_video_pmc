@@ -13,6 +13,25 @@ def test_accepts_bounded_source():
     source = 'import React from "react"; import type {GeneratedSceneProps} from "../dynamic-sdk"; export const CommercialImpactScene: React.FC<GeneratedSceneProps> = () => null;'
     assert validate_generated_source(source, scene_input()).valid
 
+
+def test_rejects_invalid_motion_contract_props():
+    source = '''
+    import React from "react";
+    import type {GeneratedSceneProps} from "../dynamic-sdk";
+    import {FadeReveal, StaggerGroup, SlideReveal} from "../dynamic-sdk";
+    export const CommercialImpactScene: React.FC<GeneratedSceneProps> = () => (
+      <div>
+        <FadeReveal delay={6} duration={18}><div>Test</div></FadeReveal>
+        <StaggerGroup stagger={6}><div>One</div></StaggerGroup>
+        <SlideReveal direction="up" distance={18} delay={14} duration={18}><div>Two</div></SlideReveal>
+      </div>
+    );
+    '''
+    result = validate_generated_source(source, scene_input())
+    assert not result.valid
+    assert any(issue.code == "invalid_motion_contract_prop" for issue in result.issues)
+
+
 def test_graph_runs():
     result = build_phase_4a_graph().invoke({"run_id": "run_test", "scene_id": "scene_01", "scene_input": scene_input().model_dump(mode="json"), "events": []})
     assert result["status"] == "ready_for_component_generator_agent"

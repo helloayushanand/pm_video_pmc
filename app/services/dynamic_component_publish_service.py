@@ -108,6 +108,22 @@ class DynamicComponentPublishService:
             else {}
         )
 
+        review_path = (
+            run_path
+            / "05d_generated_components"
+            / "review_packages.json"
+        )
+        review_data = (
+            load_json(review_path)
+            if review_path.exists()
+            else []
+        )
+        review_by_scene = {
+            item["scene_id"]: item
+            for item in review_data
+            if item.get("scene_id")
+        }
+
         preview_by_scene = {
             item["scene_id"]: item
             for item in preview_data.get(
@@ -116,6 +132,32 @@ class DynamicComponentPublishService:
             )
             if item.get("scene_id")
         }
+
+        quality_blocked = self._evaluate_publish_gate(
+            compiled_data.get("compiled_components", []),
+            preview_data.get("results", []),
+            review_data,
+        )
+        if quality_blocked:
+            report = {
+                "status": "blocked",
+                "run_id": run_path.name,
+                "published_count": 0,
+                "blocked_count": len(quality_blocked),
+                "published": [],
+                "blocked": quality_blocked,
+            }
+            save_json(report, output_path / "dynamic_publish_report.json")
+            raise DynamicComponentPublishError(
+                "Generated components failed the publish quality gate: "
+                + ", ".join(
+                    sorted({
+                        error
+                        for item in quality_blocked
+                        for error in item["errors"]
+                    })
+                )
+            )
 
         renderer = (
             Path(RENDERER_DIR)
@@ -564,6 +606,47 @@ class DynamicComponentPublishService:
             "actual_sha256":
                 actual_hash,
         }
+
+    @staticmethod
+    def _evaluate_publish_gate(compiled_components, preview_results, review_packages):
+        """Block publication if quality or visual QA is not in an approved state."""
+
+        review_by_scene = {
+            item["scene_id"]: item
+            for item in review_packages
+            if item.get("scene_id")
+        }
+        preview_by_scene = {
+            item["scene_id"]: item
+            for item in preview_results
+            if item.get("scene_id")
+        }
+
+        blocked = []
+        for item in compiled_components:
+            scene_id = item.get("scene_id")
+            if not scene_id:
+                continue
+
+            errors = []
+            review = review_by_scene.get(scene_id)
+            if review is None or review.get("design_quality_action") != "approve":
+                errors.append("quality_not_approved")
+
+            preview = preview_by_scene.get(scene_id)
+            if preview is None or not bool(preview.get("visual_approved")):
+                errors.append("visual_quality_not_approved")
+
+            if errors:
+                blocked.append(
+                    {
+                        "scene_id": scene_id,
+                        "component_name": item.get("component_name"),
+                        "errors": errors,
+                    }
+                )
+
+        return blocked
 
     @staticmethod
     def _normalise_renderer_imports(

@@ -1,27 +1,27 @@
 import type React from "react";
 import type {GeneratedSceneProps} from "../dynamic-sdk";
 
-import {AsymmetricEditorial_Keywords as GeneratedComponent1} from "./components/scene_02_exec_summary_AsymmetricEditorial_Keywords";
-import {HorizontalCareerTimeline_3node as GeneratedComponent2} from "./components/scene_03_timeline_HorizontalCareerTimeline_3node";
-import {AsymmetricMetricsGrid_Animated as GeneratedComponent3} from "./components/scene_04_metrics_AsymmetricMetricsGrid_Animated";
-import {NetworkOrg_GeoRibbon as GeneratedComponent4} from "./components/scene_05_leadership_NetworkOrg_GeoRibbon";
-import {TwoColumn_Strengths_Icons as GeneratedComponent5} from "./components/scene_06_strengths_TwoColumn_Strengths_Icons";
+import {Hero_Typographic_Silhouette as GeneratedComponent1} from "./components/s1_Hero_Typographic_Silhouette";
+import {ExecutiveSummary_IconRow as GeneratedComponent2} from "./components/s2_ExecutiveSummary_IconRow";
+import {ThreeNode_CareerTimeline as GeneratedComponent3} from "./components/s3_ThreeNode_CareerTimeline";
+import {AnimatedMetricBurst_4up as GeneratedComponent4} from "./components/s4_AnimatedMetricBurst_4up";
+import {OrgNetwork_GeoBadges as GeneratedComponent5} from "./components/s5_OrgNetwork_GeoBadges";
 
 export const generatedSceneRegistry: Record<
   string,
   React.FC<GeneratedSceneProps>
 > = {
-  "scene_02_exec_summary": GeneratedComponent1,
-  "scene_03_timeline": GeneratedComponent2,
-  "scene_04_metrics": GeneratedComponent3,
-  "scene_05_leadership": GeneratedComponent4,
-  "scene_06_strengths": GeneratedComponent5,
+  "s1": GeneratedComponent1,
+  "s2": GeneratedComponent2,
+  "s3": GeneratedComponent3,
+  "s4": GeneratedComponent4,
+  "s5": GeneratedComponent5,
 };
 
 export const generatedSceneFallbackRegistry: Record<string, string> = {
-  "scene_02_exec_summary": "typography_only",
-  "scene_03_timeline": "typography_only",
-  "scene_04_metrics": "remotion_native",
-  "scene_05_leadership": "deterministic_diagram",
-  "scene_06_strengths": "typography_only",
+  "s1": "Typography_only_title_card",
+  "s2": "Typography_summary_card",
+  "s3": "Horizontal_typography_timeline",
+  "s4": "Staggered_metric_typography",
+  "s5": "Two_column_label_list",
 };

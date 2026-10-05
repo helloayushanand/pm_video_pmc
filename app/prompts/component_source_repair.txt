@@ -15,6 +15,9 @@ REPAIR RULES
 - Prefer the smallest safe change rather than redesigning the whole scene.
 - Prefer React.createElement instead of JSX.
 - Never silence a type problem with "as any".
+- Preserve the intended visual logic of the original scene. Do not collapse a unique composition into a generic card stack while fixing TypeScript.
+- If the original scene used a stronger visual strategy such as chronology, hierarchy, comparison, flow, or editorial emphasis, maintain that logic in the repair.
+- Do not replace a premium composition with repeated metric cards, a uniform grid, or a block of repetitive panels only because it is easier to type-check.
 
 DYNAMIC SDK CONTRACT
 GeneratedSceneProps has exactly this runtime shape:

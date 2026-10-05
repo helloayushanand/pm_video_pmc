@@ -16,6 +16,17 @@ FORBIDDEN_PATTERNS = {
     "document.cookie": "browser_secret_access", "localStorage": "browser_storage",
     "sessionStorage": "browser_storage",
 }
+INVALID_MOTION_PROPS_PATTERN = re.compile(
+    r"(?:"
+    r"React\.createElement\s*\(\s*"
+    r"(?:FadeReveal|SlideReveal|StaggerGroup)\s*,\s*\{[^}]*?"
+    r"\b(?:delay|duration|stagger)\s*:"
+    r"|"
+    r"<\s*(?:FadeReveal|SlideReveal|StaggerGroup)\b[^>]*?"
+    r"\b(?:delay|duration|stagger)\s*="
+    r")",
+    re.IGNORECASE | re.DOTALL,
+)
 IMPORT_PATTERN = re.compile(r'(?:import\s+(?:type\s+)?[^;]*?\s+from\s+|import\s*)["\']([^"\']+)["\']')
 ARTIFACT_PATTERN = re.compile(r'artifactId\s*:\s*["\']([^"\']+)["\']')
 
@@ -30,6 +41,11 @@ def validate_generated_source(source: str, scene_input: SceneGenerationInput) ->
         prefix = any(module == p or module.startswith(p + "/") for p in ALLOWED_IMPORT_PREFIXES)
         if not direct and not prefix:
             issues.append(SourceValidationIssue(code="unapproved_import", message=f"Unapproved import: {module}"))
+    if INVALID_MOTION_PROPS_PATTERN.search(source):
+        issues.append(SourceValidationIssue(
+            code="invalid_motion_contract_prop",
+            message="Invalid motion prop contract: use delayFrames, durationFrames, or staggerFrames instead of delay/duration/stagger.",
+        ))
     for fragment, code in {
         "GeneratedSceneProps": "missing_generated_scene_props",
         "export": "missing_export",

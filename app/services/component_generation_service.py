@@ -45,9 +45,85 @@ class ComponentGenerationService:
     scenes exceeds max_scenes. There is no secondary minimum-score veto.
     """
 
+    MAX_QUALITY_RETRIES = 1
+
     def __init__(self, model=None):
         self.agent = ComponentGenerationAgent(model=model)
         self.graph = build_component_graph(self.agent)
+
+    @staticmethod
+    def _quality_retry_guidance(attempt):
+        return (
+            "This is a retry after a weak visual quality assessment. "
+            "Do not default to another card-grid or repeated metric panel. "
+            "Choose a more distinct primary composition, improve hierarchy, "
+            "alignment, and spacing, and make the dominant visual form "
+            "clearer on the first read. Preserve the facts but redesign the "
+            f"layout logic for attempt {attempt}."
+        )
+
+    @staticmethod
+    def _design_quality_action(source_text, scene_input):
+        from app.services.component_review_service import ComponentReviewService
+
+        if not source_text:
+            return {"action": "reject", "score": 0.0}
+
+        if hasattr(scene_input, "model_dump"):
+            scene_payload = scene_input.model_dump(mode="json")
+        else:
+            scene_payload = scene_input
+
+        return ComponentReviewService._evaluate_design_quality(
+            source_text,
+            scene_payload,
+        )
+
+    def _generate_scene_with_retry(self, scene, output_directory, run_id):
+        """Bounded retry loop for scenes flagged as borderline by visual review."""
+
+        state = {
+            "run_id": run_id,
+            "scene_id": scene.scene_id,
+            "scene_input": scene.model_dump(mode="json"),
+            "generation_attempts": 0,
+            "source_repair_attempts": 0,
+            "max_generation_attempts": 1,
+            "max_source_repair_attempts": 2,
+            "status": "pending",
+            "fallback_component": scene.fallback_component,
+            "output_directory": str(output_directory),
+            "events": [],
+        }
+
+        for attempt in range(1, self.MAX_QUALITY_RETRIES + 2):
+            scene_payload = scene.model_copy(deep=True)
+            scene_architecture = dict(scene_payload.scene_architecture)
+            if attempt > 1:
+                scene_architecture["retry_guidance"] = self._quality_retry_guidance(
+                    attempt - 1
+                )
+            scene_payload.scene_architecture = scene_architecture
+            state["scene_input"] = scene_payload.model_dump(mode="json")
+            state["generation_attempts"] = attempt - 1
+            result = self.graph.invoke(state)
+            source_text = result.get("generated_source") or ""
+            quality = self._design_quality_action(source_text, scene_payload)
+            action = quality.get("action", "approve")
+            result["quality_score"] = quality.get("score", 0.0)
+            result["quality_action"] = action
+            result["generation_attempts"] = attempt
+            result["scene_input"] = scene_payload.model_dump(mode="json")
+
+            if action == "approve":
+                return result
+            if attempt > self.MAX_QUALITY_RETRIES:
+                return result
+
+            if attempt <= self.MAX_QUALITY_RETRIES:
+                continue
+
+        return result
 
     def generate(
         self,
@@ -101,20 +177,10 @@ class ComponentGenerationService:
                     )
                 ),
             )
-            result = self.graph.invoke(
-                {
-                    "run_id": run_path.name,
-                    "scene_id": scene.scene_id,
-                    "scene_input": scene.model_dump(mode="json"),
-                    "generation_attempts": 0,
-                    "source_repair_attempts": 0,
-                    "max_generation_attempts": 1,
-                    "max_source_repair_attempts": 2,
-                    "status": "pending",
-                    "fallback_component": scene.fallback_component,
-                    "output_directory": str(output_path),
-                    "events": [],
-                }
+            result = self._generate_scene_with_retry(
+                scene,
+                output_path,
+                run_path.name,
             )
             results.append(self._serializable_result(result))
 

@@ -19,6 +19,7 @@ from app.pipeline.step_05h_compile_components import compile_components
 from app.pipeline.step_05i_repair_compiler_errors import repair_compiler_errors
 from app.pipeline.step_05j_preview_components import preview_components
 from app.pipeline.step_05k_publish_dynamic_components import publish_dynamic_components
+from app.pipeline.repair_visual_components import repair_visual_components
 from app.pipeline.step_09b_render_dynamic_video import render_dynamic_video
 from app.pipeline.step_10b_final_dynamic_video_qa import final_dynamic_video_qa
 from app.pipeline.step_06_generate_audio import generate_audio
@@ -58,6 +59,8 @@ STEP_ALIASES = {
     "repair_compiler_errors": "repair_compiler_errors",
     "component_preview": "preview_components",
     "preview_components": "preview_components",
+    "visual_repair": "repair_visual_components",
+    "repair_visual_components": "repair_visual_components",
     "publish_dynamic": "publish_dynamic_components",
     "publish_dynamic_components": "publish_dynamic_components",
     "dynamic_video": "render_dynamic_video",
@@ -396,6 +399,12 @@ def execute_step(
             model=arguments.model,
             run_visual_qa=True,
             timeout_seconds=180,
+        )
+
+    if step_name == "repair_visual_components":
+        return repair_visual_components(
+            run_directory=run_directory,
+            model=arguments.model,
         )
 
     if step_name == "publish_dynamic_components":
