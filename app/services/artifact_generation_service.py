@@ -102,15 +102,14 @@ class ArtifactGenerationService:
                 continue
 
             if strategy == ArtifactStrategy.APPROVED_LOCAL_ASSET.value:
-                # P0 #1: ArtifactService can pre-approve the highest-ranked
-                # extracted dossier image. Preserve that decision instead of
-                # forcing a second manual approval gate in Phase 3B.
                 if self._has_valid_preapproved_local_asset(record):
                     record["status"] = ArtifactStatus.APPROVED.value
                     record["approved"] = True
                     record["validation_errors"] = []
                     record["validation_warnings"] = []
                     events.append(self._event(record, "preapproved_local_asset"))
+                elif record.get("status") == ArtifactStatus.FALLBACK.value:
+                    events.append(self._event(record, "local_asset_fallback"))
                 else:
                     self._resolve_manual_approval(record, approved_dir)
                     events.append(self._event(record, "local_asset_checked"))

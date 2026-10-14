@@ -389,7 +389,6 @@ def execute_step(
         return repair_compiler_errors(
             run_directory=run_directory,
             model=arguments.model,
-            max_attempts=2,
             timeout_seconds=120,
         )
 

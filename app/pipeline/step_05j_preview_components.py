@@ -1,4 +1,4 @@
-"""Pipeline Step 05J: deterministic generated-component runtime smoke render."""
+"""Pipeline Step 05J: multi-frame generated-component preview and visual QA."""
 from __future__ import annotations
 
 import argparse
@@ -35,10 +35,10 @@ def preview_components(
     run_visual_qa=False,
     timeout_seconds=180,
 ):
-    """Smoke-render compile-approved components before publication.
+    """Render representative frames and optionally assess them visually.
 
-    By default this performs deterministic Remotion still rendering only.
-    Multimodal Visual QA remains opt-in and is not required for runtime safety.
+    Runtime-only previews are marked unassessed and cannot be published as
+    visually approved generated components.
     """
     run_path = Path(run_directory).expanduser().resolve()
     _migrate(run_path)
@@ -77,8 +77,8 @@ def preview_components(
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Smoke-render generated components before publication. "
-            "Visual QA is optional."
+            "Render generated-component preview frames and optionally run "
+            "multimodal visual QA."
         )
     )
     parser.add_argument("--run-dir", required=True)
@@ -86,7 +86,7 @@ def main():
     parser.add_argument(
         "--visual-qa",
         action="store_true",
-        help="Also run optional multimodal Visual QA after deterministic smoke render.",
+        help="Run multimodal Visual QA after the four deterministic preview renders.",
     )
     parser.add_argument("--timeout-seconds", type=int, default=180)
     args = parser.parse_args()
@@ -101,6 +101,8 @@ def main():
         print("PHASE 6 RUNTIME SMOKE CHECK COMPLETED")
         print(f"Components: {summary['scene_count']}")
         print(f"Runtime smoke passed: {summary['preview_rendered_count']}")
+        print(f"Visual QA approved: {summary['visual_approved_count']}")
+        print(f"Unassessed: {summary['unassessed_count']}")
         print(f"Failed: {summary['failed_count']}")
         print(f"Ready for publish: {summary['ready_for_phase_7']}")
         return 0 if summary["failed_count"] == 0 else 2

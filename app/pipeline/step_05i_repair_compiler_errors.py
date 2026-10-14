@@ -18,7 +18,7 @@ def _migrate(run_path):
         steps[STEP_NAME] = {"status": "pending", "started_at": None, "completed_at": None, "error": None, "outputs": {}}
         save_json(state, state_path)
 
-def repair_compiler_errors(run_directory, model=None, max_attempts=2, timeout_seconds=120):
+def repair_compiler_errors(run_directory, model=None, timeout_seconds=120):
     run_path = Path(run_directory).expanduser().resolve()
     _migrate(run_path)
     manager = RunManager(run_path)
@@ -26,26 +26,51 @@ def repair_compiler_errors(run_directory, model=None, max_attempts=2, timeout_se
     output_dir = run_path / "05e_component_compilation"
     manager.start_step(STEP_NAME)
     try:
-        summary = CompilerRepairService(model=model).repair(run_path, output_dir, max_attempts, timeout_seconds)
-        manager.complete_step(STEP_NAME, outputs={"repair_report": str(output_dir / "compiler_repair_report.json"), **{key: value for key, value in summary.items() if key != "results"}})
+        summary = CompilerRepairService(model=model).repair_failed_components_once(
+            run_path,
+            output_dir,
+            timeout_seconds,
+        )
+        manager.complete_step(
+            STEP_NAME,
+            outputs={
+                "repair_report": str(
+                    output_dir / "automatic_compiler_repair_report.json"
+                ),
+                **{
+                    key: value
+                    for key, value in summary.items()
+                    if key != "results"
+                },
+            },
+        )
         return summary
     except Exception as error:
         manager.fail_step(STEP_NAME, f"{type(error).__name__}: {error}")
         raise
 
 def main():
-    parser = argparse.ArgumentParser(description="Repair generated TypeScript compiler errors.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Apply one compiler-guided correction to each failed generated "
+            "component."
+        )
+    )
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--model", default=settings.openai_model)
-    parser.add_argument("--max-attempts", type=int, default=2)
     parser.add_argument("--timeout-seconds", type=int, default=120)
     args = parser.parse_args()
     try:
-        summary = repair_compiler_errors(args.run_dir, args.model, args.max_attempts, args.timeout_seconds)
-        print("PHASE 5B COMPILER REPAIR COMPLETED")
-        print(f"Compiled repairs pending approval: {summary['compiled_repair_count']}")
-        print(f"Fallbacks: {summary['fallback_count']}")
-        print(f"Ready for repaired-source review: {summary['ready_for_repaired_source_review']}")
+        summary = repair_compiler_errors(
+            args.run_dir,
+            args.model,
+            args.timeout_seconds,
+        )
+        print("PHASE 5B AUTOMATIC COMPILER CORRECTION COMPLETED")
+        print(f"Repair attempts: {summary['attempted_repair_count']}")
+        print(f"Repaired and compiled: {summary['repaired_compiled_count']}")
+        print(f"Components compiled: {summary['compiled_count']}")
+        print(f"Components falling back: {summary['failed_count']}")
         return 0
     except Exception as error:
         print("PHASE 5B COMPILER REPAIR FAILED")

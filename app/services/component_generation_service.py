@@ -10,6 +10,7 @@ from app.agents.component_generation.graph import build_component_graph
 from app.schemas.generated_component import (
     ApprovedArtifactReference,
     ComponentGenerationPlan,
+    ComponentGenerationStatus,
     SceneGenerationInput,
 )
 from app.utils.json_utils import load_json, save_json
@@ -45,42 +46,12 @@ class ComponentGenerationService:
     scenes exceeds max_scenes. There is no secondary minimum-score veto.
     """
 
-    MAX_QUALITY_RETRIES = 1
-
     def __init__(self, model=None):
         self.agent = ComponentGenerationAgent(model=model)
         self.graph = build_component_graph(self.agent)
 
-    @staticmethod
-    def _quality_retry_guidance(attempt):
-        return (
-            "This is a retry after a weak visual quality assessment. "
-            "Do not default to another card-grid or repeated metric panel. "
-            "Choose a more distinct primary composition, improve hierarchy, "
-            "alignment, and spacing, and make the dominant visual form "
-            "clearer on the first read. Preserve the facts but redesign the "
-            f"layout logic for attempt {attempt}."
-        )
-
-    @staticmethod
-    def _design_quality_action(source_text, scene_input):
-        from app.services.component_review_service import ComponentReviewService
-
-        if not source_text:
-            return {"action": "reject", "score": 0.0}
-
-        if hasattr(scene_input, "model_dump"):
-            scene_payload = scene_input.model_dump(mode="json")
-        else:
-            scene_payload = scene_input
-
-        return ComponentReviewService._evaluate_design_quality(
-            source_text,
-            scene_payload,
-        )
-
-    def _generate_scene_with_retry(self, scene, output_directory, run_id):
-        """Bounded retry loop for scenes flagged as borderline by visual review."""
+    def _generate_scene_once(self, scene, output_directory, run_id):
+        """Generate and validate a scene once, falling back on failure."""
 
         state = {
             "run_id": run_id,
@@ -89,40 +60,61 @@ class ComponentGenerationService:
             "generation_attempts": 0,
             "source_repair_attempts": 0,
             "max_generation_attempts": 1,
-            "max_source_repair_attempts": 2,
+            "max_source_repair_attempts": 0,
             "status": "pending",
             "fallback_component": scene.fallback_component,
             "output_directory": str(output_directory),
             "events": [],
         }
 
-        for attempt in range(1, self.MAX_QUALITY_RETRIES + 2):
-            scene_payload = scene.model_copy(deep=True)
-            scene_architecture = dict(scene_payload.scene_architecture)
-            if attempt > 1:
-                scene_architecture["retry_guidance"] = self._quality_retry_guidance(
-                    attempt - 1
-                )
-            scene_payload.scene_architecture = scene_architecture
-            state["scene_input"] = scene_payload.model_dump(mode="json")
-            state["generation_attempts"] = attempt - 1
+        try:
             result = self.graph.invoke(state)
-            source_text = result.get("generated_source") or ""
-            quality = self._design_quality_action(source_text, scene_payload)
-            action = quality.get("action", "approve")
-            result["quality_score"] = quality.get("score", 0.0)
-            result["quality_action"] = action
-            result["generation_attempts"] = attempt
-            result["scene_input"] = scene_payload.model_dump(mode="json")
+        except Exception as error:
+            logger.exception(
+                "Component generation failed for %s; using its fallback.",
+                scene.scene_id,
+            )
+            safe_scene = re.sub(r"[^A-Za-z0-9_-]", "_", scene.scene_id)
+            manifest_dir = output_directory / "manifests"
+            manifest_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path = manifest_dir / f"{safe_scene}.json"
+            save_json(
+                {
+                    "scene_id": scene.scene_id,
+                    "component_name": None,
+                    "source_file": None,
+                    "status": ComponentGenerationStatus.FALLBACK.value,
+                    "fallback_component": scene.fallback_component,
+                    "generation_attempts": 1,
+                    "repair_attempts": 0,
+                    "error": f"{type(error).__name__}: {error}",
+                },
+                manifest_path,
+            )
+            return {
+                "run_id": run_id,
+                "scene_id": scene.scene_id,
+                "scene_input": scene.model_dump(mode="json"),
+                "generation_attempts": 1,
+                "source_repair_attempts": 0,
+                "status": ComponentGenerationStatus.FALLBACK.value,
+                "fallback_component": scene.fallback_component,
+                "manifest_file": str(manifest_path),
+                "events": [
+                    {
+                        "node": "component_generator",
+                        "status": "failed",
+                        "detail": f"{type(error).__name__}: {error}",
+                    },
+                    {
+                        "node": "activate_fallback",
+                        "status": "completed",
+                    },
+                ],
+            }
 
-            if action == "approve":
-                return result
-            if attempt > self.MAX_QUALITY_RETRIES:
-                return result
-
-            if attempt <= self.MAX_QUALITY_RETRIES:
-                continue
-
+        result["generation_attempts"] = 1
+        result["scene_input"] = scene.model_dump(mode="json")
         return result
 
     def generate(
@@ -177,7 +169,7 @@ class ComponentGenerationService:
                     )
                 ),
             )
-            result = self._generate_scene_with_retry(
+            result = self._generate_scene_once(
                 scene,
                 output_path,
                 run_path.name,
@@ -207,6 +199,7 @@ class ComponentGenerationService:
     ):
         draft = creative_plan.get("draft", creative_plan)
         direction = draft.get("creative_direction", {})
+        all_scene_briefs = draft.get("scene_briefs", [])
         storyboard_scenes = {
             scene.get("scene_id"): scene
             for scene in storyboard.get("scenes", [])
@@ -294,6 +287,18 @@ class ComponentGenerationService:
                 available_artifact_ids
             )
             architecture["missing_required_artifact_ids"] = missing_required
+            architecture["video_level_context"] = {
+                "narrative_thesis": draft.get("narrative_thesis", ""),
+                "creative_concept": direction.get("creative_concept", ""),
+                "visual_motifs": direction.get("visual_motifs", []),
+                "cohesion_rule": (
+                    "Keep a coherent design language while giving each "
+                    "scene its own evidence-led composition."
+                ),
+            }
+            architecture["other_scene_designs"] = (
+                self._other_scene_designs(scene_id, all_scene_briefs)
+            )
 
             if missing_required:
                 logger.warning(
@@ -335,6 +340,28 @@ class ComponentGenerationService:
             run_id=run_id,
             scenes=scene_inputs,
         )
+
+    @staticmethod
+    def _other_scene_designs(scene_id, scene_briefs):
+        """Summarize other planned scenes so generated layouts can vary."""
+        fields = (
+            "scene_id",
+            "scene_type",
+            "scene_purpose",
+            "visual_story",
+            "layout_intent",
+            "focal_element",
+            "animation_intent",
+        )
+        return [
+            {
+                key: brief[key]
+                for key in fields
+                if key in brief
+            }
+            for brief in scene_briefs
+            if brief.get("scene_id") != scene_id
+        ]
 
     @staticmethod
     def _approved_artifacts(artifact_manifest):

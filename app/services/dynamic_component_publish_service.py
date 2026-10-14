@@ -108,22 +108,6 @@ class DynamicComponentPublishService:
             else {}
         )
 
-        review_path = (
-            run_path
-            / "05d_generated_components"
-            / "review_packages.json"
-        )
-        review_data = (
-            load_json(review_path)
-            if review_path.exists()
-            else []
-        )
-        review_by_scene = {
-            item["scene_id"]: item
-            for item in review_data
-            if item.get("scene_id")
-        }
-
         preview_by_scene = {
             item["scene_id"]: item
             for item in preview_data.get(
@@ -133,27 +117,26 @@ class DynamicComponentPublishService:
             if item.get("scene_id")
         }
 
-        quality_blocked = self._evaluate_publish_gate(
+        runtime_blocked = self._evaluate_publish_gate(
             compiled_data.get("compiled_components", []),
             preview_data.get("results", []),
-            review_data,
         )
-        if quality_blocked:
+        if runtime_blocked:
             report = {
                 "status": "blocked",
                 "run_id": run_path.name,
                 "published_count": 0,
-                "blocked_count": len(quality_blocked),
+                "blocked_count": len(runtime_blocked),
                 "published": [],
-                "blocked": quality_blocked,
+                "blocked": runtime_blocked,
             }
             save_json(report, output_path / "dynamic_publish_report.json")
             raise DynamicComponentPublishError(
-                "Generated components failed the publish quality gate: "
+                "Generated components failed the runtime smoke gate: "
                 + ", ".join(
                     sorted({
                         error
-                        for item in quality_blocked
+                        for item in runtime_blocked
                         for error in item["errors"]
                     })
                 )
@@ -308,6 +291,12 @@ class DynamicComponentPublishService:
                         item[
                             "component_name"
                         ],
+
+                    "export_kind":
+                        item.get(
+                            "export_kind",
+                            "named",
+                        ),
 
                     "source_file":
                         str(source),
@@ -608,14 +597,8 @@ class DynamicComponentPublishService:
         }
 
     @staticmethod
-    def _evaluate_publish_gate(compiled_components, preview_results, review_packages):
-        """Block publication if quality or visual QA is not in an approved state."""
-
-        review_by_scene = {
-            item["scene_id"]: item
-            for item in review_packages
-            if item.get("scene_id")
-        }
+    def _evaluate_publish_gate(compiled_components, preview_results):
+        """Require a successful runtime smoke render before publication."""
         preview_by_scene = {
             item["scene_id"]: item
             for item in preview_results
@@ -628,21 +611,13 @@ class DynamicComponentPublishService:
             if not scene_id:
                 continue
 
-            errors = []
-            review = review_by_scene.get(scene_id)
-            if review is None or review.get("design_quality_action") != "approve":
-                errors.append("quality_not_approved")
-
             preview = preview_by_scene.get(scene_id)
-            if preview is None or not bool(preview.get("visual_approved")):
-                errors.append("visual_quality_not_approved")
-
-            if errors:
+            if preview is None or not bool(preview.get("preview_rendered")):
                 blocked.append(
                     {
                         "scene_id": scene_id,
                         "component_name": item.get("component_name"),
-                        "errors": errors,
+                        "errors": ["runtime_smoke_not_passed"],
                     }
                 )
 
@@ -732,15 +707,21 @@ class DynamicComponentPublishService:
                 ]
             ).stem
 
-            lines.append(
-                f'import '
-                f'{{'
-                f'{item["component_name"]} '
-                f'as {alias}'
-                f'}} '
-                f'from '
-                f'"./components/{stem}";'
-            )
+            if item.get("export_kind") == "default":
+                lines.append(
+                    f'import {alias} '
+                    f'from "./components/{stem}";'
+                )
+            else:
+                lines.append(
+                    f'import '
+                    f'{{'
+                    f'{item["component_name"]} '
+                    f'as {alias}'
+                    f'}} '
+                    f'from '
+                    f'"./components/{stem}";'
+                )
 
             entries.append(
                 f'  '

@@ -1,10 +1,13 @@
 """Bounded compiler-repair workflow for generated components."""
 from __future__ import annotations
+import hashlib
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
 from app.config import RENDERER_DIR
+from app.agents.component_generation.agent import ComponentGenerationAgent
 from app.agents.component_generation.compiler_repair_agent import CompilerRepairAgent
 from app.agents.component_generation.source_validator import validate_generated_source
 from app.schemas.generated_component import GeneratedComponentOutput, SceneGenerationInput
@@ -73,6 +76,284 @@ class CompilerRepairService:
         (output_path / "compiler_repair_summary.md").write_text(self._markdown(summary), encoding="utf-8")
         return summary
 
+    def repair_failed_components_once(
+        self,
+        run_directory,
+        output_directory,
+        timeout_seconds=120,
+    ):
+        """Repair each failed scene once, then retain only successful repairs."""
+        run_path = Path(run_directory).expanduser().resolve()
+        output_path = Path(output_directory).expanduser().resolve()
+        output_path.mkdir(parents=True, exist_ok=True)
+        compilation_report_path = (
+            run_path
+            / "05e_component_compilation"
+            / "compilation_report.json"
+        )
+        generation_results_path = (
+            run_path
+            / "05d_generated_components"
+            / "generation_results.json"
+        )
+        generation_plan_path = (
+            run_path
+            / "05d_generated_components"
+            / "generation_plan.json"
+        )
+        compiled_manifest_path = (
+            run_path
+            / "05e_component_compilation"
+            / "approved_compiled_components.json"
+        )
+        for path in (
+            compilation_report_path,
+            generation_results_path,
+            generation_plan_path,
+            compiled_manifest_path,
+        ):
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"Required compiler-repair input is missing: {path}"
+                )
+
+        compilation_report = load_json(compilation_report_path)
+        generation_results = load_json(generation_results_path)
+        generation_plan = load_json(generation_plan_path)
+        compiled_manifest = load_json(compiled_manifest_path)
+        scene_inputs = {
+            item["scene_id"]: SceneGenerationInput.model_validate(item)
+            for item in generation_plan.get("scenes", [])
+        }
+        results_by_scene = {
+            item["scene_id"]: item
+            for item in generation_results
+            if item.get("scene_id")
+        }
+        compile_runs = {
+            item["scene_id"]: item
+            for item in compilation_report.get("compiler_runs", [])
+            if item.get("scene_id")
+        }
+        compiled_by_scene = {
+            item["scene_id"]: item
+            for item in compiled_manifest.get("compiled_components", [])
+        }
+        repair_results = []
+
+        failed_components = [
+            item
+            for item in compilation_report.get("components", [])
+            if item.get("compile_status") == "compiler_error"
+        ]
+        for failed in failed_components:
+            scene_id = failed["scene_id"]
+            scene_input = scene_inputs.get(scene_id)
+            generated_result = results_by_scene.get(scene_id)
+            compiler_run = compile_runs.get(scene_id)
+            if not scene_input or not generated_result or not compiler_run:
+                repair_results.append(
+                    {
+                        "scene_id": scene_id,
+                        "status": "fallback",
+                        "repair_attempts": 0,
+                        "reason": "repair_context_missing",
+                    }
+                )
+                continue
+
+            compiler_output = (
+                (compiler_run.get("stdout") or "")
+                + "\n"
+                + (compiler_run.get("stderr") or "")
+            ).strip()
+            if not compiler_output:
+                compiler_output = "\n".join(
+                    item.get("raw", "")
+                    for item in failed.get("compile_errors", [])
+                )
+            try:
+                component = GeneratedComponentOutput.model_validate(
+                    generated_result["generated_component"]
+                )
+                repaired, metadata = self.agent.repair(
+                    scene_input,
+                    component,
+                    compiler_output,
+                    {
+                        **self._load_sdk_contract(),
+                        "source_derived_public_api": (
+                            ComponentGenerationAgent._read_sdk_public_api()
+                        ),
+                    },
+                )
+                if (
+                    repaired.scene_id != scene_id
+                    or repaired.component_name != component.component_name
+                ):
+                    raise CompilerRepairServiceError(
+                        "Compiler repair changed the scene or component name."
+                    )
+                validation = validate_generated_source(
+                    repaired.source_code,
+                    scene_input,
+                )
+                if not validation.valid:
+                    raise CompilerRepairServiceError(
+                        "Repaired source failed deterministic validation: "
+                        + "; ".join(
+                            issue.message for issue in validation.issues
+                        )
+                    )
+
+                repaired_dir = output_path / "automatic_repair"
+                repaired_dir.mkdir(parents=True, exist_ok=True)
+                safe_scene = "".join(
+                    character
+                    if character.isalnum() or character in "-_"
+                    else "_"
+                    for character in scene_id
+                )
+                candidate_path = (
+                    repaired_dir
+                    / f"{safe_scene}_{repaired.component_name}.tsx"
+                )
+                candidate_path.write_text(
+                    repaired.source_code,
+                    encoding="utf-8",
+                )
+                compile_result = self._compile_candidate(
+                    run_path,
+                    scene_input,
+                    repaired,
+                    candidate_path,
+                    timeout_seconds,
+                )
+                result = {
+                    "scene_id": scene_id,
+                    "component_name": repaired.component_name,
+                    "status": (
+                        "repaired_compiled"
+                        if compile_result["compiled"]
+                        else "fallback"
+                    ),
+                    "repair_attempts": 1,
+                    "fallback_component": scene_input.fallback_component,
+                    "compiler_output": compile_result["compiler_output"],
+                    "repair_metadata": metadata,
+                }
+                if compile_result["compiled"]:
+                    export_kind = (
+                        "default"
+                        if re.search(
+                            r"\bexport\s+default\b",
+                            repaired.source_code,
+                        )
+                        else "named"
+                    )
+                    compiled_item = dict(failed)
+                    compiled_item.update(
+                        {
+                            "source_file": str(candidate_path.resolve()),
+                            "source_sha256": self._sha256_file(candidate_path),
+                            "component_name": repaired.component_name,
+                            "compile_status": "compiled",
+                            "fallback_reason": None,
+                            "repair_attempts": 1,
+                            "export_kind": export_kind,
+                        }
+                    )
+                    compiled_by_scene[scene_id] = compiled_item
+                    failed.update(
+                        {
+                            "compile_status": "repaired_compiled",
+                            "compile_errors": [],
+                            "fallback_reason": None,
+                            "repair_attempts": 1,
+                            "repair_source": str(candidate_path.resolve()),
+                            "repair_compiler_output": (
+                                compile_result["compiler_output"]
+                            ),
+                        }
+                    )
+                repair_results.append(result)
+                save_json(
+                    result,
+                    output_path / f"{safe_scene}_automatic_repair.json",
+                )
+            except Exception as error:
+                logger.exception(
+                    "Automatic compiler repair failed for scene %s.",
+                    scene_id,
+                )
+                repair_results.append(
+                    {
+                        "scene_id": scene_id,
+                        "status": "fallback",
+                        "repair_attempts": 1,
+                        "reason": f"{type(error).__name__}: {error}",
+                    }
+                )
+
+        surviving = list(compiled_by_scene.values())
+        compiled_manifest.update(
+            {
+                "compiled_components": surviving,
+                "compiled_count": len(surviving),
+                "failed_components": [
+                    item
+                    for item in compilation_report.get("components", [])
+                    if item.get("compile_status")
+                    not in {"compiled", "repaired_compiled"}
+                ],
+            }
+        )
+        save_json(compiled_manifest, compiled_manifest_path)
+
+        compiled_count = len(surviving)
+        failed_count = len(compiled_manifest["failed_components"])
+        remaining_failed_ids = {
+            item["scene_id"]
+            for item in compiled_manifest["failed_components"]
+        }
+        compilation_report.setdefault(
+            "initial_compiler_errors",
+            compilation_report.get("compiler_errors", []),
+        )
+        compilation_report["compiler_errors"] = [
+            error
+            for error in compilation_report.get("compiler_errors", [])
+            if error.get("scene_id") in remaining_failed_ids
+        ]
+        compilation_report.update(
+            {
+                "status": (
+                    "compiled"
+                    if failed_count == 0
+                    else "partially_compiled"
+                    if compiled_count
+                    else "compiler_error"
+                ),
+                "compiled": failed_count == 0 and compiled_count > 0,
+                "compiled_count": compiled_count,
+                "failed_count": failed_count,
+                "components": compilation_report.get("components", []),
+            }
+        )
+        save_json(compilation_report, compilation_report_path)
+        summary = {
+            "attempted_repair_count": len(failed_components),
+            "repaired_compiled_count": sum(
+                item["status"] == "repaired_compiled"
+                for item in repair_results
+            ),
+            "compiled_count": compiled_count,
+            "failed_count": failed_count,
+            "results": repair_results,
+        }
+        save_json(summary, output_path / "automatic_compiler_repair_report.json")
+        return summary
+
     def _repair_one(self, run_path, output_path, scene_input, component, compiler_output, sdk_contract, max_attempts, timeout_seconds, events):
         current = component
         last_errors = compiler_output
@@ -137,11 +418,24 @@ class CompilerRepairService:
         destination = generated / candidate_path.name
         shutil.copy2(candidate_path, destination)
         registry = src / "registry.ts"
+        source_text = candidate_path.read_text(encoding="utf-8-sig")
+        if re.search(r"\bexport\s+default\b", source_text):
+            import_line = (
+                f'import GeneratedCandidate from '
+                f'"./generated/{candidate_path.stem}";\n'
+            )
+        else:
+            import_line = (
+                f'import {{{component.component_name} '
+                f'as GeneratedCandidate}} '
+                f'from "./generated/{candidate_path.stem}";\n'
+            )
         registry.write_text(
             'import type React from "react";\n'
             'import type {GeneratedSceneProps} from "@/dynamic-sdk";\n'
-            f'import {{{component.component_name}}} from "./generated/{candidate_path.stem}";\n'
-            f'export const value: React.FC<GeneratedSceneProps> = {component.component_name};\n',
+            + import_line
+            + 'export const value: React.FC<GeneratedSceneProps> = '
+            'GeneratedCandidate;\n',
             encoding="utf-8",
         )
         tsconfig = {
@@ -162,8 +456,20 @@ class CompilerRepairService:
             output = (completed.stdout or "") + "\n" + (completed.stderr or "")
             return {"compiled": completed.returncode == 0, "status": "compiled" if completed.returncode == 0 else "compiler_error", "compiler_output": output, "return_code": completed.returncode}
         except subprocess.TimeoutExpired as error:
-            output = (error.stdout or "") + "\n" + (error.stderr or "")
+            stdout = error.stdout or ""
+            stderr = error.stderr or ""
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="replace")
+            output = stdout + "\n" + stderr
             return {"compiled": False, "status": "timeout", "compiler_output": output, "return_code": None}
+
+    @staticmethod
+    def _sha256_file(path):
+        source = Path(path).read_text(encoding="utf-8-sig")
+        canonical = source.replace("\r\n", "\n").replace("\r", "\n")
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _compiler_text(report):

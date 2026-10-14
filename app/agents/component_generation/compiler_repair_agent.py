@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from openai import OpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential
 from app.config import PROMPTS_DIR, settings
 from app.schemas.generated_component import GeneratedComponentOutput, SceneGenerationInput
 
@@ -16,11 +15,10 @@ class CompilerRepairAgent:
         self.model = model or settings.openai_model
         if not self.api_key:
             raise CompilerRepairAgentError("OPENAI_API_KEY is not configured.")
-        self.client = OpenAI(api_key=self.api_key)
+        self.client = OpenAI(api_key=self.api_key, max_retries=0)
         prompt_path = Path(PROMPTS_DIR) / "component_compiler_repair.txt"
         self.prompt = prompt_path.read_text(encoding="utf-8-sig").strip()
 
-    @retry(wait=wait_exponential(multiplier=2, min=2, max=20), stop=stop_after_attempt(3), reraise=True)
     def repair(self, scene_input, current_component, compiler_output, sdk_contract):
         payload = {
             "task": "repair_typescript_compiler_errors",

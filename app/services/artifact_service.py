@@ -159,9 +159,8 @@ class ArtifactService:
                     "Use an approved typography-only or Remotion-native fallback."
                 )
 
-                # POC policy: approved_local_asset is resolved automatically from
-                # extracted dossier images. Other sensitive strategies may retain
-                # their explicit review behavior.
+                # Dossier images are not automatically associated with identity-
+                # sensitive or mixed-content artifacts.
                 requires_human_approval = (
                     source_strategy != ArtifactStrategy.APPROVED_LOCAL_ASSET.value
                     and (
@@ -361,7 +360,21 @@ class ArtifactService:
         extracted_candidates,
         approved_directory,
     ):
-        """POC: automatically select the highest-ranked extracted image."""
+        """Use text/native fallbacks rather than mislabel an arbitrary PDF image."""
+        if artifact.artifact_type == ArtifactType.LOGO:
+            return ArtifactRecord(
+                **base_kwargs,
+                status=ArtifactStatus.FALLBACK,
+                approved=False,
+                source_description=(
+                    "No verified employer-logo match is available; the scene "
+                    "must use employer names as text instead."
+                ),
+                validation_warnings=[
+                    "Extracted dossier images are not automatically treated as logos."
+                ],
+            )
+
         if not extracted_candidates:
             return ArtifactRecord(
                 **base_kwargs,
@@ -688,6 +701,8 @@ class ArtifactService:
             "executive_portrait": ArtifactType.PORTRAIT,
             "photo": ArtifactType.PORTRAIT,
             "company_logo": ArtifactType.LOGO,
+            "logo_assets": ArtifactType.LOGO,
+            "employer_logos": ArtifactType.LOGO,
             "metric_chart": ArtifactType.CHART,
             "bar_chart": ArtifactType.CHART,
             "donut_chart": ArtifactType.CHART,

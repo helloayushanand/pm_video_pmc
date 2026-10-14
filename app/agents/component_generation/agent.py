@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from openai import OpenAI
@@ -14,6 +15,7 @@ from tenacity import (
 
 from app.config import (
     PROMPTS_DIR,
+    RENDERER_DIR,
     settings,
 )
 from app.schemas.generated_component import (
@@ -55,7 +57,8 @@ class ComponentGenerationAgent:
             )
 
         self.client = OpenAI(
-            api_key=self.api_key
+            api_key=self.api_key,
+            max_retries=0,
         )
 
         self.sdk_contract = (
@@ -63,6 +66,7 @@ class ComponentGenerationAgent:
                 "component_sdk_contract.txt"
             )
         )
+        self.sdk_public_api = self._read_sdk_public_api()
 
         generation_base = (
             self._read_prompt(
@@ -86,6 +90,116 @@ class ComponentGenerationAgent:
             self._compose_instructions(
                 repair_base
             )
+        )
+
+    @staticmethod
+    def _extract_type_alias(source, name):
+        match = re.search(
+            rf"\btype\s+{re.escape(name)}\s*=",
+            source,
+        )
+        if match is None:
+            raise ComponentAgentError(
+                f"Dynamic SDK prop type {name} is missing."
+            )
+
+        start = match.start()
+        index = match.end()
+        brace_depth = 0
+        bracket_depth = 0
+        paren_depth = 0
+        quote = None
+        escaped = False
+        while index < len(source):
+            character = source[index]
+            if quote:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == quote:
+                    quote = None
+            elif character in {"'", '"', "`"}:
+                quote = character
+            elif character == "{":
+                brace_depth += 1
+            elif character == "}":
+                brace_depth -= 1
+            elif character == "[":
+                bracket_depth += 1
+            elif character == "]":
+                bracket_depth -= 1
+            elif character == "(":
+                paren_depth += 1
+            elif character == ")":
+                paren_depth -= 1
+            elif (
+                character == ";"
+                and brace_depth == 0
+                and bracket_depth == 0
+                and paren_depth == 0
+            ):
+                return source[start:index + 1].strip()
+            index += 1
+
+        raise ComponentAgentError(
+            f"Dynamic SDK prop type {name} is not terminated."
+        )
+
+    @classmethod
+    def _read_sdk_public_api(cls):
+        sdk_dir = (
+            Path(RENDERER_DIR)
+            / "src"
+            / "dynamic-sdk"
+        )
+        primitives_path = sdk_dir / "primitives.tsx"
+        types_path = sdk_dir / "types.ts"
+        if not primitives_path.exists() or not types_path.exists():
+            raise FileNotFoundError(
+                "Dynamic SDK TypeScript sources are required to build "
+                "the component-generation contract."
+            )
+
+        primitives_source = primitives_path.read_text(
+            encoding="utf-8-sig"
+        )
+        types_source = types_path.read_text(
+            encoding="utf-8-sig"
+        )
+        exported_components = re.findall(
+            r"export\s+const\s+(\w+)\s*:\s*React\.FC<(\w+)>",
+            primitives_source,
+        )
+        if not exported_components:
+            raise ComponentAgentError(
+                "No exported Dynamic SDK component signatures were found."
+            )
+
+        props = []
+        seen_types = set()
+        for component_name, props_type in exported_components:
+            if props_type not in seen_types:
+                props.append(
+                    cls._extract_type_alias(
+                        primitives_source,
+                        props_type,
+                    )
+                )
+                seen_types.add(props_type)
+        return (
+            "These signatures are extracted from the renderer's current "
+            "TypeScript source. They are authoritative; when a prose "
+            "instruction or older example differs, follow these declarations.\n\n"
+            "Exported component-to-props mapping:\n"
+            + "\n".join(
+                f"- {component_name}: {props_type}"
+                for component_name, props_type in exported_components
+            )
+            + "\n\nExact prop type declarations:\n"
+            + "\n".join(props)
+            + "\n\nSupporting Dynamic SDK types:\n"
+            + types_source
         )
 
     @staticmethod
@@ -126,17 +240,15 @@ class ComponentGenerationAgent:
             + "=" * 72
             + "\n\n"
             + self.sdk_contract.strip()
+            + "\n\n"
+            + "=" * 72
+            + "\n"
+            + "SOURCE-DERIVED DYNAMIC SDK PUBLIC API\n"
+            + "=" * 72
+            + "\n\n"
+            + self.sdk_public_api
         )
 
-    @retry(
-        wait=wait_exponential(
-            multiplier=2,
-            min=2,
-            max=20,
-        ),
-        stop=stop_after_attempt(3),
-        reraise=True,
-    )
     def generate(
         self,
         scene_input: SceneGenerationInput,

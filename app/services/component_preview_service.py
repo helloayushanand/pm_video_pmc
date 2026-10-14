@@ -128,6 +128,11 @@ class ComponentPreviewService:
             "visual_approved_count": sum(
                 1 for item in results if item.get("visual_approved")
             ),
+            "unassessed_count": sum(
+                1
+                for item in results
+                if item.get("status") == "runtime_smoke_passed_unassessed"
+            ),
             "visual_repair_required_count": sum(
                 1
                 for item in results
@@ -140,7 +145,7 @@ class ComponentPreviewService:
                 1 for item in results if item.get("preview_rendered")
             ),
             "ready_for_phase_7": bool(results)
-            and all(item.get("preview_rendered") for item in results),
+            and all(item.get("visual_approved") for item in results),
             "results": results,
         }
         save_json(summary, output_path / "preview_qa_report.json")
@@ -223,16 +228,14 @@ class ComponentPreviewService:
             run_path,
             compiled_item["scene_id"],
         )
-        # P0 #4: one deterministic representative-frame smoke render.
-        # The objective is runtime safety, not visual scoring.
         frame_map = {
-            "smoke": max(
+            "early": max(0, min(duration_frames - 1, int(duration_frames * 0.1))),
+            "middle": max(0, min(duration_frames - 1, int(duration_frames * 0.45))),
+            "peak": max(
                 0,
-                min(
-                    duration_frames - 1,
-                    int(duration_frames * peak_percentage),
-                ),
+                min(duration_frames - 1, int(duration_frames * peak_percentage)),
             ),
+            "late": max(0, min(duration_frames - 1, int(duration_frames * 0.9))),
         }
 
         self._write_preview_project(
@@ -342,16 +345,14 @@ class ComponentPreviewService:
             status = "failed"
             repair_required = True
         elif not run_visual_qa:
-            visual_approved = True
-            status = "visual_approved"
+            status = "runtime_smoke_passed_unassessed"
         elif visual_result is None:
             logger.warning(
                 "Visual QA returned no usable structured result for scene %s. "
-                "Marking only this generated scene for fallback instead of "
-                "failing the preview pipeline.",
+                "The scene remains unassessed and will use its fallback.",
                 compiled_item["scene_id"],
             )
-            status = "visual_repair_required"
+            status = "visual_assessment_failed"
             visual_approved = False
             repair_required = True
         else:
@@ -474,12 +475,20 @@ class ComponentPreviewService:
         fps,
     ):
         component_name = compiled_item["component_name"]
+        import_statement = (
+            f'import GeneratedPreviewComponent from '
+            f'"./generated/{source_copy.stem}";\n'
+            if compiled_item.get("export_kind") == "default"
+            else (
+                f'import {{{component_name} as GeneratedPreviewComponent}} '
+                f'from "./generated/{source_copy.stem}";\n'
+            )
+        )
         root = (
             'import React from "react";\n'
             'import {Composition} from "remotion";\n'
-            f'import {{{component_name}}} '
-            f'from "./generated/{source_copy.stem}";\n'
-            'const props = '
+            + import_statement
+            + 'const props = '
             + json.dumps(
                 self._preview_props(
                     scene_input,
@@ -490,14 +499,14 @@ class ComponentPreviewService:
                 ensure_ascii=False,
             )
             + ';\n'
-            'export const Root: React.FC = () => '
-            'React.createElement(Composition, {'
-            'id: "GeneratedScenePreview", '
-            f'component: {component_name}, '
-            f'durationInFrames: {duration_frames}, '
-            f'fps: {fps}, '
-            'width: 1920, height: 1080, '
-            'defaultProps: props});\n'
+            + 'export const Root: React.FC = () => '
+            + 'React.createElement(Composition, {'
+            + 'id: "GeneratedScenePreview", '
+            + 'component: GeneratedPreviewComponent, '
+            + f'durationInFrames: {duration_frames}, '
+            + f'fps: {fps}, '
+            + 'width: 1920, height: 1080, '
+            + 'defaultProps: props});\n'
         )
         (workspace / "src" / "Root.tsx").write_text(
             root,
@@ -634,9 +643,7 @@ class ComponentPreviewService:
         errors = []
         labels = { item["label"] for item in rendered }
 
-        expected_labels = {
-            "smoke"
-        }
+        expected_labels = {"early", "middle", "peak", "late"}
 
         for label in expected_labels:
             if label not in labels:
@@ -665,7 +672,7 @@ class ComponentPreviewService:
                 errors.append(f"{path}: {error}")
 
         valid = (
-            len(rendered) == 1
+            len(rendered) == expected_count == len(expected_labels)
             and not missing
             and not invalid
             and not dimensions
@@ -755,6 +762,7 @@ class ComponentPreviewService:
             f"Scenes: {summary['scene_count']}",
             f"Preview rendered: {summary['preview_rendered_count']}",
             f"Visual approved: {summary['visual_approved_count']}",
+            f"Unassessed: {summary['unassessed_count']}",
             (
                 "Visual repair required: "
                 f"{summary['visual_repair_required_count']}"

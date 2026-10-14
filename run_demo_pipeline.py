@@ -9,14 +9,17 @@ dossier
 -> artifacts
 -> generated components
 -> deterministic source validation
--> TypeScript compilation / repair
+-> isolated TypeScript compilation per generated scene
+-> one compiler-guided correction for each failed scene
 -> mandatory Remotion runtime smoke render
 -> publish surviving generated components
 -> audio
 -> master render specification
 -> one CandidateVideo render
 
-AI Visual QA remains optional.
+Failed visual assets and generated scenes use per-item safe fallbacks; one
+generated scene's compile failure does not discard another scene's success.
+Each generated scene gets at most one compiler-guided correction attempt.
 """
 
 from __future__ import annotations
@@ -123,18 +126,6 @@ def newest_run():
     ).resolve()
 
 
-def run_state(run_dir):
-    path = (
-        run_dir
-        / "run.json"
-    )
-
-    if not path.exists():
-        return {}
-
-    return load_json(path)
-
-
 def pipeline_step(
     run_dir,
     alias,
@@ -153,6 +144,24 @@ def pipeline_step(
     )
 
 
+def ensure_storyboard(run_dir):
+    storyboard_path = (
+        run_dir
+        / "05_storyboard"
+        / "storyboard.json"
+    )
+    if storyboard_path.exists():
+        return
+
+    pipeline_step(run_dir, "storyboard")
+
+    if not storyboard_path.exists():
+        raise DemoOrchestratorError(
+            "Storyboard generation completed without producing "
+            f"the expected file: {storyboard_path}"
+        )
+
+
 def resolve_run(args):
     if args.run_dir:
         path = (
@@ -165,6 +174,37 @@ def resolve_run(args):
             raise FileNotFoundError(
                 "Run directory does "
                 f"not exist: {path}"
+            )
+
+        content_path = (
+            path
+            / "04_video_content"
+            / "video_content.json"
+        )
+        if not content_path.exists():
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "run_pipeline.py",
+                    "--run-dir",
+                    str(path),
+                    "--to-step",
+                    "select_video_content",
+                ],
+                cwd=str(PROJECT_ROOT),
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise DemoOrchestratorError(
+                    "Dossier extraction, validation, or content selection "
+                    "failed. Review: "
+                    f"{path / 'run.json'}"
+                )
+
+        if not content_path.exists():
+            raise DemoOrchestratorError(
+                "Content selection completed without producing "
+                f"the expected file: {content_path}"
             )
 
         return path
@@ -181,21 +221,14 @@ def resolve_run(args):
             f"not exist: {source}"
         )
 
-    print(
-        "\n$",
-        sys.executable,
-        "run_pipeline.py",
-        "--input",
-        str(source),
-        flush=True,
-    )
-
     completed = subprocess.run(
         [
             sys.executable,
             "run_pipeline.py",
             "--input",
             str(source),
+            "--to-step",
+            "select_video_content",
         ],
         cwd=str(PROJECT_ROOT),
         check=False,
@@ -204,53 +237,20 @@ def resolve_run(args):
     run_dir = newest_run()
 
     if completed.returncode == 0:
-        return run_dir
-
-    state = run_state(run_dir)
-
-    compile_step = (
-        state
-        .get("steps", {})
-        .get(
-            "compile_components",
-            {},
-        )
-    )
-
-    compile_error = str(
-        compile_step.get(
-            "error",
-            "",
-        )
-    )
-
-    expected_gate = (
-        compile_step.get("status")
-        == "failed"
-        and (
-            "No generated components "
-            "are approved"
-            in compile_error
-        )
-        and (
+        content_path = (
             run_dir
-            / "05d_generated_components"
-            / "generation_results.json"
-        ).exists()
-    )
-
-    if expected_gate:
-        print(
-            "\nBase pipeline reached "
-            "the expected generated-"
-            "component approval gate."
+            / "04_video_content"
+            / "video_content.json"
         )
-
+        if not content_path.exists():
+            raise DemoOrchestratorError(
+                "Content selection completed without producing "
+                f"the expected file: {content_path}"
+            )
         return run_dir
 
     raise DemoOrchestratorError(
-        "Base pipeline failed "
-        "unexpectedly. Review: "
+        "Dossier preparation or content selection failed. Review: "
         f"{run_dir / 'run.json'}"
     )
 
@@ -344,35 +344,6 @@ def artifact_gate(run_dir):
             )
 
     return pending
-
-
-def print_artifact_instructions(
-    run_dir,
-    pending,
-):
-    print(
-        "\nHUMAN ARTIFACT "
-        "REVIEW REQUIRED"
-    )
-
-    for item in pending:
-        print(
-            " -",
-            json.dumps(
-                item,
-                ensure_ascii=False,
-            ),
-        )
-
-    print(
-        "\nReview extracted assets:"
-    )
-
-    print(
-        run_dir
-        / "05c_artifacts"
-        / "extracted"
-    )
 
 
 def selected_scene_count(run_dir):
@@ -594,44 +565,24 @@ def auto_approve_components(
     return count
 
 
-def reject_scene_to_fallback(
-    run_dir,
-    scene_id,
-    reviewer,
-    reason,
-):
-    run_command(
-        [
-            sys.executable,
-            "-m",
-            "app.pipeline.approve_component",
-            "--run-dir",
-            str(run_dir),
-            "--scene-id",
-            scene_id,
-            "--decision",
-            "rejected_use_fallback",
-            "--reviewer",
-            reviewer,
-            "--notes",
-            reason,
-        ]
+def write_empty_compiled_manifest(run_dir):
+    compilation_dir = run_dir / "05e_component_compilation"
+    compilation_dir.mkdir(parents=True, exist_ok=True)
+    save_json(
+        {
+            "schema_version": "1.0",
+            "compiled_components": [],
+            "compiled_count": 0,
+            "workspace_registry": None,
+        },
+        compilation_dir / "approved_compiled_components.json",
     )
 
 
-def compile_and_repair(
+def compile_components_once(
     run_dir,
     args,
 ):
-    """
-    Compile generated components and
-    attempt automatic compiler repair.
-
-    This function must only be called
-    when at least one generated component
-    is approved.
-    """
-
     if (
         approved_generated_scene_count(
             run_dir
@@ -639,181 +590,82 @@ def compile_and_repair(
         == 0
     ):
         print(
-            "\nNo generated components "
-            "are approved for compilation."
+            "\nNo validated generated components; "
+            "using library fallbacks."
         )
-
+        write_empty_compiled_manifest(run_dir)
         return False
 
-    for cycle in range(
-        1,
-        4,
-    ):
+    print("\nCompiling generated components once.")
+    write_empty_compiled_manifest(run_dir)
+    run_command(
+        [
+            sys.executable,
+            "-m",
+            "app.pipeline.step_05h_compile_components",
+            "--run-dir",
+            str(run_dir),
+            "--timeout-seconds",
+            str(args.compile_timeout),
+        ],
+        allowed_codes=(0, 2),
+    )
+    compilation_report_path = (
+        run_dir
+        / "05e_component_compilation"
+        / "compilation_report.json"
+    )
+    if not compilation_report_path.exists():
         print(
-            "\nCOMPILATION CYCLE "
-            f"{cycle} OF 3"
+            "\nCompilation produced no report; generated scenes will use "
+            "their fallbacks."
         )
+        return False
 
-        code = run_command(
-            [
-                sys.executable,
-                "-m",
-                (
-                    "app.pipeline."
-                    "step_05h_compile_components"
-                ),
-                "--run-dir",
-                str(run_dir),
-                "--timeout-seconds",
-                str(
-                    args.compile_timeout
-                ),
-            ],
-            allowed_codes=(
-                0,
-                2,
-            ),
+    compilation_report = load_json(compilation_report_path)
+    failed_scene_count = sum(
+        1
+        for item in compilation_report.get("components", [])
+        if item.get("compile_status") == "compiler_error"
+    )
+    if failed_scene_count:
+        print(
+            f"\nRunning one compiler-guided correction pass for "
+            f"{failed_scene_count} failed scene(s)."
         )
-
-        if code == 0:
-            return True
-
         run_command(
             [
                 sys.executable,
                 "-m",
-                (
-                    "app.pipeline."
-                    "step_05i_repair_"
-                    "compiler_errors"
-                ),
+                "app.pipeline.step_05i_repair_compiler_errors",
                 "--run-dir",
                 str(run_dir),
-                "--max-attempts",
-                str(
-                    args.repair_attempts
-                ),
                 "--timeout-seconds",
-                str(
-                    args.compile_timeout
-                ),
-            ]
+                str(args.compile_timeout),
+            ],
+            allowed_codes=(0,),
         )
 
-        report_path = (
-            run_dir
-            / "05e_component_compilation"
-            / "compiler_repair_report.json"
-        )
-
-        if not report_path.exists():
-            raise DemoOrchestratorError(
-                "Compiler repair report missing."
-            )
-
-        report = load_json(
-            report_path
-        )
-
-        repaired = [
-            item
-            for item in report.get(
-                "results",
-                [],
-            )
-            if item.get("status")
-            == (
-                "repaired_compiled_"
-                "pending_approval"
-            )
-        ]
-
-        fallbacks = [
-            item
-            for item in report.get(
-                "results",
-                [],
-            )
-            if item.get("status")
-            == "fallback"
-        ]
-
-        if (
-            not repaired
-            and not fallbacks
-        ):
-            raise DemoOrchestratorError(
-                "Compiler repair produced "
-                "no actionable result."
-            )
-
-        for item in repaired:
-            run_command(
-                [
-                    sys.executable,
-                    "-m",
-                    (
-                        "app.pipeline."
-                        "promote_repaired_component"
-                    ),
-                    "--run-dir",
-                    str(run_dir),
-                    "--scene-id",
-                    item["scene_id"],
-                ]
-            )
-
-        for item in fallbacks:
-            reject_scene_to_fallback(
-                run_dir,
-                item["scene_id"],
-                args.reviewer,
-                (
-                    "Generated source exhausted "
-                    "compiler repair attempts."
-                ),
-            )
-
-        pipeline_step(
-            run_dir,
-            "component_review",
-        )
-
-        if repaired:
-            if not args.auto_approve_safe:
-                raise DemoOrchestratorError(
-                    "Repaired components require "
-                    "review before compilation."
-                )
-
-            auto_approve_components(
-                run_dir,
-                args.reviewer,
-            )
-
-            pipeline_step(
-                run_dir,
-                "component_review",
-            )
-
-        if (
-            approved_generated_scene_count(
-                run_dir
-            )
-            == 0
-        ):
-            print(
-                "\nAll generated scenes were "
-                "routed to library fallbacks "
-                "during compiler repair."
-            )
-
-            return False
-
-    raise DemoOrchestratorError(
-        "Compiler errors remain after "
-        "three repair cycles."
+    compiled_manifest_path = (
+        run_dir
+        / "05e_component_compilation"
+        / "approved_compiled_components.json"
     )
+    compiled_count = (
+        len(
+            load_json(compiled_manifest_path).get(
+                "compiled_components",
+                [],
+            )
+        )
+        if compiled_manifest_path.exists()
+        else 0
+    )
+    print(
+        f"\nGenerated scenes available after compilation and correction: "
+        f"{compiled_count}."
+    )
+    return compiled_count > 0
 
 
 def runtime_smoke_command(
@@ -835,7 +687,7 @@ def runtime_smoke_command(
         ),
     ]
 
-    if args.preview_qa:
+    if getattr(args, "preview_qa", True):
         command.append(
             "--visual-qa"
         )
@@ -855,6 +707,8 @@ def runtime_smoke_failures(
         if not item.get(
             "preview_rendered"
         )
+        or not item.get("visual_approved")
+        or item.get("status") != "visual_approved"
     ]
 
 
@@ -862,14 +716,7 @@ def runtime_smoke_check(
     run_dir,
     args,
 ):
-    """
-    Mandatory generated-component
-    runtime gate.
-
-    Returns a dictionary containing
-    whether any generated components
-    remain available for publication.
-    """
+    """Visually assess generated scenes, repair once, then retain verified scenes."""
 
     approved_before = (
         approved_generated_scene_count(
@@ -878,6 +725,7 @@ def runtime_smoke_check(
     )
 
     if approved_before == 0:
+        write_empty_compiled_manifest(run_dir)
         return {
             "publish_generated":
                 False,
@@ -890,8 +738,8 @@ def runtime_smoke_check(
         }
 
     print(
-        "\nRunning mandatory generated-"
-        "component runtime smoke check."
+        "\nRunning generated-component "
+        "visual quality checks."
     )
 
     command = (
@@ -925,16 +773,82 @@ def runtime_smoke_check(
         preview_path
     )
 
-    failed = (
-        runtime_smoke_failures(
-            preview
+    repairable = [
+        item
+        for item in preview.get("results", [])
+        if item.get("status") == "visual_repair_required"
+        and item.get("visual_qa")
+    ]
+    if repairable:
+        save_json(
+            preview,
+            run_dir
+            / "05f_component_previews"
+            / "preview_qa_report_initial.json",
         )
-    )
+        print(
+            "\nVisual QA rejected "
+            f"{len(repairable)} scene(s); attempting one targeted correction "
+            "per scene."
+        )
+        pipeline_step(run_dir, "visual_repair")
+        repair_report_path = (
+            run_dir
+            / "05d_generated_components"
+            / "visual_repair_report.json"
+        )
+        repair_report = (
+            load_json(repair_report_path)
+            if repair_report_path.exists()
+            else {"repaired_count": 0}
+        )
+        if repair_report.get("repaired_count", 0):
+            pipeline_step(run_dir, "component_review")
+            auto_approve_components(
+                run_dir,
+                getattr(args, "reviewer", "Demo Reviewer"),
+            )
+            pipeline_step(run_dir, "component_review")
+            if compile_components_once(run_dir, args):
+                print("\nRechecking scenes after visual correction.")
+                run_command(
+                    runtime_smoke_command(run_dir, args),
+                    allowed_codes=(0, 2),
+                )
+                if not preview_path.exists():
+                    raise DemoOrchestratorError(
+                        "Visual recheck report missing after component correction: "
+                        f"{preview_path}"
+                    )
+                preview = load_json(preview_path)
 
+    approved_scene_ids = {
+        item.get("scene_id")
+        for item in preview.get("results", [])
+        if item.get("preview_rendered")
+        and item.get("visual_approved")
+        and item.get("status") == "visual_approved"
+    }
+    compiled_path = (
+        run_dir
+        / "05e_component_compilation"
+        / "approved_compiled_components.json"
+    )
+    compiled_manifest = load_json(compiled_path)
+    compiled_components = compiled_manifest.get("compiled_components", [])
+    surviving = [
+        item
+        for item in compiled_components
+        if item.get("scene_id") in approved_scene_ids
+    ]
+    compiled_manifest["compiled_components"] = surviving
+    compiled_manifest["compiled_count"] = len(surviving)
+    save_json(compiled_manifest, compiled_path)
+
+    failed = runtime_smoke_failures(preview)
     if not failed:
         print(
-            "\nAll generated components "
-            "passed runtime smoke rendering."
+            "\nAll generated components passed visual QA and runtime checks."
         )
 
         return {
@@ -944,176 +858,19 @@ def runtime_smoke_check(
             "all_fell_back":
                 False,
 
-            "remaining_generated":
-                approved_before,
+            "remaining_generated": len(surviving),
 
             "preview":
                 preview,
         }
 
-    print(
-        "\nRuntime smoke failures detected."
-    )
-
-    for item in failed:
-        scene_id = item.get(
-            "scene_id"
-        )
-
-        if not scene_id:
-            continue
-
-        reason = (
-            "Generated component failed "
-            "mandatory runtime smoke render."
-        )
-
-        render_errors = (
-            item.get(
-                "render_errors"
-            )
-            or []
-        )
-
-        if render_errors:
-            first_error = (
-                render_errors[0]
-            )
-
-            diagnostic = str(
-                first_error.get(
-                    "stderr"
-                )
-                or first_error.get(
-                    "stdout"
-                )
-                or ""
-            ).strip()
-
-            if diagnostic:
-                reason += (
-                    " Runtime diagnostic: "
-                    + diagnostic[:800]
-                )
-
-        reject_scene_to_fallback(
-            run_dir,
-            scene_id,
-            args.reviewer,
-            reason,
-        )
-
-    pipeline_step(
-        run_dir,
-        "component_review",
-    )
-
-    remaining = (
-        approved_generated_scene_count(
-            run_dir
-        )
-    )
-
-    # CRITICAL ALL-FALLBACK CASE
-    if remaining == 0:
+    rejected_count = len(compiled_components) - len(surviving)
+    if rejected_count:
         print(
-            "\nAll generated components "
-            "were routed to library fallbacks."
+            "\nVisual assessment or runtime checks rejected "
+            f"{rejected_count} scene(s); those scenes will use fallbacks."
         )
-
-        print(
-            "Skipping generated-component "
-            "recompilation and publication."
-        )
-
-        return {
-            "publish_generated":
-                False,
-
-            "all_fell_back":
-                True,
-
-            "remaining_generated":
-                0,
-        }
-
-    print(
-        "\nRecompiling "
-        f"{remaining} surviving "
-        "generated component(s)."
-    )
-
-    compiled = (
-        compile_and_repair(
-            run_dir,
-            args,
-        )
-    )
-
-    if not compiled:
-        return {
-            "publish_generated":
-                False,
-
-            "all_fell_back":
-                True,
-
-            "remaining_generated":
-                0,
-        }
-
-    print(
-        "\nRe-running runtime smoke "
-        "check after fallback resolution."
-    )
-
-    run_command(
-        command,
-        allowed_codes=(
-            0,
-            2,
-        ),
-    )
-
-    second_preview = load_json(
-        preview_path
-    )
-
-    remaining_failures = (
-        runtime_smoke_failures(
-            second_preview
-        )
-    )
-
-    if remaining_failures:
-        failed_ids = [
-            str(
-                item.get(
-                    "scene_id"
-                )
-            )
-            for item
-            in remaining_failures
-        ]
-
-        raise DemoOrchestratorError(
-            "Generated components still "
-            "fail runtime smoke rendering: "
-            + ", ".join(
-                failed_ids
-            )
-        )
-
-    final_count = (
-        approved_generated_scene_count(
-            run_dir
-        )
-    )
-
-    print(
-        "\nSurviving generated components "
-        "passed runtime smoke rendering."
-    )
+    final_count = len(surviving)
 
     return {
         "publish_generated":
@@ -1126,7 +883,7 @@ def runtime_smoke_check(
             final_count,
 
         "preview":
-            second_preview,
+            preview,
     }
 
 
@@ -1146,11 +903,6 @@ def ensure_audio(run_dir):
             run_dir,
             "generate_audio",
         )
-
-    pipeline_step(
-        run_dir,
-        "align_audio",
-    )
 
     if (
         not audio_path.exists()
@@ -1305,7 +1057,7 @@ def run_optional_final_qa(
     if not args.final_qa:
         return None
 
-    run_command(
+    qa_code = run_command(
         [
             sys.executable,
             "-m",
@@ -1323,8 +1075,17 @@ def run_optional_final_qa(
         allowed_codes=(
             0,
             2,
+            1,
         ),
     )
+
+    if qa_code == 1:
+        print(
+            "\nFinal QA could not complete. "
+            "The rendered video remains available:"
+        )
+        print(output_video)
+        return None
 
     candidates = [
         (
@@ -1403,6 +1164,8 @@ def run_demo(args):
         state_path,
     )
 
+    ensure_storyboard(run_dir)
+
     creative_plan_path = (
         run_dir
         / "05b_creative_plan"
@@ -1413,6 +1176,11 @@ def run_demo(args):
         pipeline_step(
             run_dir,
             "creative_plan",
+        )
+    if not creative_plan_path.exists():
+        raise DemoOrchestratorError(
+            "Creative-plan generation completed without producing "
+            f"the expected file: {creative_plan_path}"
         )
 
     artifact_manifest = (
@@ -1446,6 +1214,11 @@ def run_demo(args):
         run_command(
             command
         )
+    if not artifact_manifest.exists():
+        raise DemoOrchestratorError(
+            "Artifact generation completed without producing "
+            f"the expected manifest: {artifact_manifest}"
+        )
 
     pending = (
         artifact_gate(
@@ -1454,27 +1227,14 @@ def run_demo(args):
     )
 
     if pending:
-        state.update(
-            {
-                "status":
-                    "awaiting_artifact_review",
-
-                "pending_artifacts":
-                    pending,
-            }
+        print(
+            f"\n{len(pending)} artifact(s) need review. "
+            "Continuing without them; scene fallbacks will be used."
         )
-
-        save_json(
-            state,
-            state_path,
-        )
-
-        print_artifact_instructions(
-            run_dir,
-            pending,
-        )
-
-        return 20
+        state["omitted_unapproved_artifacts"] = [
+            item.get("artifact_id")
+            for item in pending
+        ]
 
     regenerate_components_if_needed(
         run_dir,
@@ -1487,120 +1247,38 @@ def run_demo(args):
         )
     )
 
-    publish_report = {
-        "status":
-            "not_required",
-
-        "published_count":
-            0,
-    }
+    publish_report = {"status": "not_required", "published_count": 0}
 
     if generated_count > 0:
         pipeline_step(
             run_dir,
             "component_review",
         )
-
-        if args.auto_approve_safe:
-            auto_approve_components(
-                run_dir,
-                args.reviewer,
-            )
-
-            pipeline_step(
-                run_dir,
-                "component_review",
-            )
-
-        else:
-            state[
-                "status"
-            ] = (
-                "awaiting_component_review"
-            )
-
-            save_json(
-                state,
-                state_path,
-            )
-
-            return 21
-
-        review_path = (
-            run_dir
-            / "05d_generated_components"
-            / "component_review_summary.json"
+        auto_approve_components(
+            run_dir,
+            args.reviewer,
+        )
+        pipeline_step(
+            run_dir,
+            "component_review",
         )
 
-        if not review_path.exists():
-            raise DemoOrchestratorError(
-                "Component review summary "
-                "is missing."
-            )
+        compiled = compile_components_once(run_dir, args)
 
-        review = load_json(
-            review_path
-        )
-
-        if not review.get(
-            "ready_for_phase_5"
-        ):
-            raise DemoOrchestratorError(
-                "Component review is not "
-                "ready for compilation."
-            )
-
-        compiled = (
-            compile_and_repair(
+        if compiled:
+            runtime_smoke_check(
                 run_dir,
                 args,
             )
-        )
-
-        if compiled:
-            smoke_result = (
-                runtime_smoke_check(
-                    run_dir,
-                    args,
-                )
-            )
-
-            if smoke_result.get(
-                "publish_generated"
-            ):
-                publish_report = (
-                    publish_generated_components(
-                        run_dir
-                    )
-                )
-
-            else:
-                print(
-                    "\nNo generated components "
-                    "survived the runtime gate."
-                )
-
-                print(
-                    "Continuing with library "
-                    "renderers."
-                )
-
-        else:
-            print(
-                "\nNo generated components "
-                "survived compilation."
-            )
-
-            print(
-                "Continuing with library "
-                "renderers."
-            )
-
     else:
         print(
-            "\nNo generated scenes planned. "
-            "Using library renderers."
+            "\nNo generated scenes planned; using library fallbacks."
         )
+        write_empty_compiled_manifest(run_dir)
+
+    # Always publish the run's registry, including an empty one, so a prior
+    # run's generated components can never leak into this video's render.
+    publish_report = publish_generated_components(run_dir)
 
     ensure_audio(
         run_dir
@@ -1649,61 +1327,15 @@ def run_demo(args):
             report_path
         )
 
-        if not final_report.get(
-            "ready_for_final_approval"
-        ):
-            state[
-                "status"
-            ] = (
-                "final_video_created_"
-                "qa_warning"
-            )
-
-            save_json(
-                state,
-                state_path,
-            )
-
+        if final_report.get("quality_concerns_found"):
             print(
-                "\nFINAL VIDEO CREATED:",
+                "\nFinal QA found quality concerns; "
+                "the video is still available at:",
                 output_video,
             )
+        state["final_qa_status"] = final_report.get("status")
 
-            return 23
-
-    if args.auto_approve_final:
-        run_command(
-            [
-                sys.executable,
-                "-m",
-                (
-                    "app.pipeline."
-                    "approve_final_video"
-                ),
-                "--run-dir",
-                str(run_dir),
-                "--reviewer",
-                args.reviewer,
-                "--decision",
-                "approved_for_demo",
-                "--notes",
-                (
-                    "Demo approval for "
-                    "single-composition render."
-                ),
-            ]
-        )
-
-        state[
-            "status"
-        ] = "completed"
-
-    else:
-        state[
-            "status"
-        ] = (
-            "final_video_created"
-        )
+    state["status"] = "completed"
 
     save_json(
         state,
@@ -1758,11 +1390,13 @@ def build_parser():
     parser.add_argument(
         "--auto-approve-safe",
         action="store_true",
+        help="Retained for compatibility; safe validated components are auto-approved.",
     )
 
     parser.add_argument(
         "--auto-approve-final",
         action="store_true",
+        help="Retained for compatibility; final video approval is not required.",
     )
 
     parser.add_argument(
@@ -1774,6 +1408,7 @@ def build_parser():
         "--repair-attempts",
         type=int,
         default=2,
+        help="Retained for compatibility; this flow does not repair/retry generated code.",
     )
 
     parser.add_argument(
@@ -1782,11 +1417,22 @@ def build_parser():
         default=120,
     )
 
-    # Smoke rendering is mandatory.
-    # This flag adds optional AI Visual QA.
+    # Generated components require visual assessment before publication.
     parser.add_argument(
         "--preview-qa",
         action="store_true",
+        default=True,
+        help=argparse.SUPPRESS,
+    )
+
+    parser.add_argument(
+        "--skip-preview-qa",
+        dest="preview_qa",
+        action="store_false",
+        help=(
+            "Skip multimodal preview assessment. Generated components will "
+            "use fallbacks because unassessed scenes are not publishable."
+        ),
     )
 
     parser.add_argument(
@@ -1805,6 +1451,15 @@ def build_parser():
     parser.add_argument(
         "--final-qa",
         action="store_true",
+        default=True,
+        help="Run final video visual QA (enabled by default).",
+    )
+
+    parser.add_argument(
+        "--skip-final-qa",
+        dest="final_qa",
+        action="store_false",
+        help="Skip the final visual-quality assessment.",
     )
 
     parser.add_argument(

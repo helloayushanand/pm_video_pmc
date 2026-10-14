@@ -30,9 +30,12 @@ def compile_components(run_directory, timeout_seconds=120):
         report = ComponentCompilationService().compile_approved_components(run_path, output_dir, timeout_seconds)
         manager.complete_step(STEP_NAME, outputs={
             "compilation_report": str(output_dir / "compilation_report.json"),
-            "compiled_registry": str(output_dir / "compiled_registry.ts") if report["compiled"] else None,
+            "compiled_registry": str(output_dir / "compiled_registry.ts") if report["compiled_count"] else None,
             "compiled": report["compiled"], "status": report["status"],
-            "component_count": len(report["components"]), "compiler_error_count": len(report["compiler_errors"]),
+            "component_count": len(report["components"]),
+            "compiled_count": report["compiled_count"],
+            "failed_count": report["failed_count"],
+            "compiler_error_count": len(report["compiler_errors"]),
         })
         return report
     except Exception as error:
@@ -48,9 +51,12 @@ def main():
         report = compile_components(args.run_dir, args.timeout_seconds)
         print("PHASE 5A COMPILATION COMPLETED")
         print(f"Status: {report['status']}")
-        print(f"Compiled: {report['compiled']}")
+        print(
+            "Components compiled: "
+            f"{report['compiled_count']}/{len(report['components'])}"
+        )
         print(f"Compiler errors: {len(report['compiler_errors'])}")
-        return 0 if report["compiled"] else 2
+        return 0 if report["compiled_count"] else 2
     except Exception as error:
         print("PHASE 5A COMPILATION FAILED")
         print(f"{type(error).__name__}: {error}")

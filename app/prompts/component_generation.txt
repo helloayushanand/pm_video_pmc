@@ -82,7 +82,7 @@ Good strategies include, but are not limited to:
 
 Do not default to a generic card layout. The design must have a clear dominant visual form.
 
-If scene_architecture.retry_guidance is present, treat it as a corrective instruction for this attempt. It means the previous version was judged visually weak. The new version must not repeat the same dominant card-grid or metric-panel logic. Increase hierarchy, spacing, and alignment, and choose a clearer primary composition while preserving the approved facts.
+Use scene_architecture.video_level_context to maintain the video's narrative and visual cohesion. Use scene_architecture.other_scene_designs to understand the compositions already planned for other scenes, especially their visual stories, layout intents, and focal elements. Make this scene's dominant composition meaningfully distinct rather than reusing another scene's layout. These references guide the design; they do not restrict you to a fixed set of templates. Invent the composition that best serves this scene's evidence and purpose.
 
 Choose the strategy that best fits the evidence, the message, and the intended pacing. The strategy should feel intentional, not arbitrary.
 
@@ -156,6 +156,20 @@ For a chart, bars/marks and exact approved values must remain visible long enoug
 COMPILATION-FIRST SDK CONTRACT
 
 The generated source must compile under strict TypeScript without relying on compiler repair.
+
+The source-derived Dynamic SDK public signatures appended to the system
+instructions are the exact renderer contract. Prefer those declarations over
+this prompt's prose or any remembered component API. In particular, use only
+props present in those signatures; do not infer aliases such as `space`,
+`ratio`, `delay`, `duration`, or `stagger` when they are not declared.
+
+Compilation requirements:
+- Export the requested component as a named `export const Name: React.FC<GeneratedSceneProps>`.
+- Import every Dynamic SDK primitive referenced in the source; do not rely on
+  names being available globally.
+- `SceneFrame` accepts only its declared props and has no `style` prop. Apply
+  layout styles to an inner HTML element instead.
+- Never repeat a key in an object literal, including CSS style objects.
 
 Before returning source_code, mentally type-check:
 
@@ -423,13 +437,13 @@ ApprovedAsset
 - follow the ApprovedAsset contract above
 
 FadeReveal
-- use supported delay/duration props only
+- use delayFrames and durationFrames
 
 SlideReveal
-- use supported direction/distance/delay/duration props only
+- use direction, distance, delayFrames, and durationFrames
 
 StaggerGroup
-- use supported stagger/reveal props only
+- use delayFrames and staggerFrames; direction is optional
 
 ConfidentialityLabel
 - requires text
@@ -673,7 +687,7 @@ Before returning the GeneratedComponentOutput, verify:
 
 18. The source should compile successfully on the first compiler pass.
 
-The generated source will be statically validated and compiled. Any violation causes repair or fallback.
+The generated source will be statically validated, compiled, and runtime-smoke-rendered. Any violation may cause the scene to use its declared fallback.
 
 SDK CONTRACT
 

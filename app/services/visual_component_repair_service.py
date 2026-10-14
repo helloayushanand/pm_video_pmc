@@ -13,16 +13,15 @@ from app.schemas.generated_component import (
     SourceValidationResult,
 )
 from app.utils.json_utils import load_json, save_json
+from app.utils.logging import get_logger
 
-
-class VisualComponentRepairError(Exception):
-    """Raised when a visual repair cannot produce valid generated source."""
+logger = get_logger(__name__)
 
 
 class VisualComponentRepairService:
     """Regenerate only scenes rejected by visual QA."""
 
-    MAX_REPAIR_ATTEMPTS = 2
+    MAX_REPAIR_ATTEMPTS = 1
 
     def __init__(self, model=None):
         self.agent = ComponentGenerationAgent(model=model)
@@ -44,6 +43,7 @@ class VisualComponentRepairService:
         result_by_scene = {item["scene_id"]: item for item in results}
         repaired = []
         skipped = []
+        failed = []
 
         for qa in preview.get("results", []):
             if qa.get("visual_approved"):
@@ -51,6 +51,18 @@ class VisualComponentRepairService:
                 continue
 
             scene_id = qa.get("scene_id")
+            if (
+                qa.get("status") != "visual_repair_required"
+                or not qa.get("visual_qa")
+            ):
+                skipped.append(
+                    {
+                        "scene_id": scene_id,
+                        "reason": "visual_assessment_unavailable",
+                    }
+                )
+                continue
+
             scene_payload = scenes.get(scene_id)
             result = result_by_scene.get(scene_id)
             if not scene_payload or not result or not result.get("source_file"):
@@ -101,27 +113,39 @@ class VisualComponentRepairService:
                 discovered_imports=current_validation.discovered_imports,
                 discovered_artifacts=current_validation.discovered_artifacts,
             )
-            component = current_component
-            metadata = None
-            validation = current_validation
-            for attempt in range(1, self.MAX_REPAIR_ATTEMPTS + 1):
+            try:
                 component, metadata = self.agent.repair(
                     repaired_input,
-                    component,
-                    visual_validation if attempt == 1 else validation,
+                    current_component,
+                    visual_validation,
                 )
                 validation = validate_generated_source(
                     component.source_code,
                     repaired_input,
                 )
-                if validation.valid:
-                    break
-            if not validation.valid:
-                raise VisualComponentRepairError(
-                    f"Visual repair produced invalid source for {scene_id} "
-                    f"after {self.MAX_REPAIR_ATTEMPTS} attempts: "
-                    + "; ".join(issue.message for issue in validation.issues)
+                if not validation.valid:
+                    failed.append(
+                        {
+                            "scene_id": scene_id,
+                            "reason": "repaired_source_validation_failed",
+                            "issues": [
+                                issue.message for issue in validation.issues
+                            ],
+                        }
+                    )
+                    continue
+            except Exception as error:
+                logger.exception(
+                    "Visual repair failed for scene %s; it will use its fallback.",
+                    scene_id,
                 )
+                failed.append(
+                    {
+                        "scene_id": scene_id,
+                        "reason": f"{type(error).__name__}: {error}",
+                    }
+                )
+                continue
 
             source_path = Path(result["source_file"]).expanduser().resolve()
             source_path.write_text(component.source_code, encoding="utf-8")
@@ -130,7 +154,7 @@ class VisualComponentRepairService:
                     "generated_source": component.source_code,
                     "generated_component": component.model_dump(mode="json"),
                     "source_validation": validation.model_dump(mode="json"),
-                    "visual_repair_attempts": int(result.get("visual_repair_attempts", 0)) + attempt,
+                    "visual_repair_attempts": int(result.get("visual_repair_attempts", 0)) + 1,
                     "visual_repair_metadata": metadata,
                     "status": "ready_for_compilation",
                 }
@@ -146,9 +170,11 @@ class VisualComponentRepairService:
         report = {
             "repaired_count": len(repaired),
             "skipped_count": len(skipped),
+            "failed_count": len(failed),
             "repaired": repaired,
             "skipped": skipped,
-            "next_step": "review_components",
+            "failed": failed,
+            "next_step": "recompile_and_verify",
         }
         save_json(report, run_path / "05d_generated_components" / "visual_repair_report.json")
         return report

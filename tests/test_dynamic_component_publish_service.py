@@ -1,4 +1,6 @@
 """Tests for Phase 7A component publishing helpers."""
+from pathlib import Path
+
 from app.services.dynamic_component_publish_service import (
     DynamicComponentPublishService,
 )
@@ -17,7 +19,7 @@ def test_canonical_hash_normalises_line_endings():
     assert first == second
 
 
-def test_publish_gate_blocks_unapproved_quality_and_visual_qa():
+def test_publish_gate_allows_rendered_component_without_visual_approval():
     service = DynamicComponentPublishService()
     compiled = {
         "compiled_components": [
@@ -32,23 +34,60 @@ def test_publish_gate_blocks_unapproved_quality_and_visual_qa():
     }
     preview = {
         "results": [
-            {"scene_id": "scene_1", "visual_approved": False}
+            {
+                "scene_id": "scene_1",
+                "preview_rendered": True,
+                "visual_approved": False,
+            }
         ]
     }
-    review = [
-        {
-            "scene_id": "scene_1",
-            "design_quality_action": "retry",
-            "approval_status": "quality_retry",
-        }
-    ]
-
     blocked = service._evaluate_publish_gate(
         compiled["compiled_components"],
         preview.get("results", []),
-        review,
     )
 
-    assert blocked[0]["scene_id"] == "scene_1"
-    assert "quality_not_approved" in blocked[0]["errors"]
-    assert "visual_quality_not_approved" in blocked[0]["errors"]
+    assert blocked == []
+
+
+def test_publish_gate_blocks_component_that_fails_runtime_smoke():
+    blocked = DynamicComponentPublishService._evaluate_publish_gate(
+        [
+            {
+                "scene_id": "scene_1",
+                "component_name": "GeneratedScene",
+            }
+        ],
+        [{"scene_id": "scene_1", "preview_rendered": False}],
+    )
+
+    assert blocked == [
+        {
+            "scene_id": "scene_1",
+            "component_name": "GeneratedScene",
+            "errors": ["runtime_smoke_not_passed"],
+        }
+    ]
+
+
+def test_runtime_registry_imports_default_export(tmp_path):
+    publish_root = tmp_path / "generated-current"
+    (publish_root / "components").mkdir(parents=True)
+
+    registry = DynamicComponentPublishService._write_registry(
+        publish_root,
+        [
+            {
+                "scene_id": "scene_default",
+                "component_name": "Scene",
+                "export_kind": "default",
+                "runtime_source": str(
+                    publish_root / "components" / "scene.tsx"
+                ),
+                "fallback_component": "GenericScene",
+            }
+        ],
+    )
+
+    source = Path(registry).read_text(encoding="utf-8")
+    assert 'import GeneratedComponent1 from "./components/scene";' in source
+    assert "import {Scene as GeneratedComponent1}" not in source
