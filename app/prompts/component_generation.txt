@@ -102,6 +102,24 @@ Prioritise:
 Reject generic patterns such as repeated small panels, stacked statistic cards, or a uniform grid when the brief supports a more expressive or narrative treatment.
 
 
+FRAME AND LAYOUT RELIABILITY
+
+The preview and final render use a 1920x1080 frame. Design for that actual canvas and keep the complete composition inside it.
+
+- Reserve at least 80px from every edge for essential scene content. Keep the top-left brand and top-right area clear for the renderer's final-scene confidentiality overlay; do not place essential content beneath or across it.
+- Keep essential copy at 24px or larger and supporting labels at 18px or larger. Use smaller type only for optional source/attribution details.
+- Use high-contrast foreground colors for all essential and supporting text; never reduce text opacity to make it decorative. On-screen text must meet WCAG AA contrast (4.5:1 for normal text, 3:1 for large text) against its rendered background.
+- Use AutoFitText for variable-length display copy. Give text containers a bounded width, set minWidth: 0 on grid/flex children, and allow natural wrapping. Do not rely on guessed text widths, nowrap, or fixed-height text containers.
+- Prefer grid/flex flow for content. Use absolute positioning only for deliberate diagram geometry or decorative layers, and keep every label attached to its mark with enough room to read.
+- Avoid fixed-size boxes that clip their children. OverflowBoundary is a safety boundary, not a way to hide layout mistakes.
+- Keep the focal visual and its essential labels visible together through the main reading window. Use whitespace intentionally; do not leave most of the canvas empty when the brief calls for a chart, timeline, diagram, or other focal visual. For those scenes, make the visual occupy at least 60% of the safe-area width and 35% of its height; do not compress it into a narrow strip or small cluster.
+- Never use scene IDs, component names, or debug/build text as visible copy. Omit SceneFrame.sceneLabel unless it contains a concise, audience-facing label.
+- Never display production notes, source/page references, implementation commentary, design explanations, or narration about what the scene is doing. Audience-facing copy should be concise facts or a clear editorial headline, not sentences such as "three anchor roles shown left to right" or "active node highlighted to show...".
+- Do not add a confidentiality badge to individual scenes. The renderer adds the single confidentiality label once at the end of the video.
+
+Before returning source, mentally check the rendered composition at 1920x1080: no text collisions, clipped edges, overlapping chrome, unreadably small labels, or important content outside the safe area. If a long approved fact does not fit, reflow or shorten only when meaning is preserved; never simply crop it.
+
+
 ANTI-REPETITION RULE
 
 Within a single video, do not repeat the same dominant layout signature across multiple scenes unless the narrative truly requires it.
@@ -446,8 +464,7 @@ StaggerGroup
 - use delayFrames and staggerFrames; direction is optional
 
 ConfidentialityLabel
-- requires text
-- requires theme
+- do not use in generated scene components; CandidateVideo adds the single label at video end
 
 OverflowBoundary
 - contains content and prevents overflow
@@ -520,6 +537,8 @@ COLOR AND DEPTH
 
 Use context.theme as the base design system but create controlled visual richness through:
 
+- Keep background, surface, text, and primary accents anchored to the approved theme. Preserve the same typography and core visual identity across generated and library scenes; vary the composition rather than introducing a conflicting palette.
+- Use SceneFrame's shared background and brand chrome without custom background overrides or hiding the brand. Do not introduce scene-specific full-canvas gradients, dark/light mode changes, or alternate font families; vary local shapes, imagery and layout instead.
 - surface contrast
 - accentSecondary
 - borders
@@ -574,7 +593,7 @@ HARD REQUIREMENTS
 - Use context.durationInFrames and context.fps where relevant.
 - Read content defensively.
 - Keep essential content inside SafeArea and OverflowBoundary.
-- Keep confidentiality treatment enabled through SceneFrame.
+- Do not render confidentiality labels per scene; CandidateVideo adds the single label at video end.
 - Use deterministic frame-based animation only.
 - Create a candidate-specific composition rather than selecting a fixed full-scene template.
 - Do not use "as any" to hide SDK or TypeScript problems.

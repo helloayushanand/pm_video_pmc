@@ -70,7 +70,20 @@ def generate_artifacts(run_directory, generate_images=False):
 def build_argument_parser():
     parser = argparse.ArgumentParser(description="Run Phase 3B artifacts.")
     parser.add_argument("--run-dir", required=True)
-    parser.add_argument("--generate-images", action="store_true")
+    image_generation = parser.add_mutually_exclusive_group()
+    image_generation.add_argument(
+        "--generate-images",
+        dest="generate_images",
+        action="store_true",
+        help="Generate planned decorative image artifacts (enabled by default).",
+    )
+    image_generation.add_argument(
+        "--skip-image-generation",
+        dest="generate_images",
+        action="store_false",
+        help="Skip decorative image generation.",
+    )
+    parser.set_defaults(generate_images=True)
     return parser
 
 

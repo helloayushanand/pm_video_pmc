@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "remotion-studio",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "studio", "--prefix", "renderer/remotion-project", "--", "--port", "3123"],
+      "port": 3123,
+      "url": "http://localhost:3123"
+    }
+  ]
+}

@@ -60,6 +60,26 @@ class ComponentReviewService:
                 output_directory=review_dir,
                 approvals_directory=approvals_dir,
             )
+            if (
+                package["approval_status"] == "pending_review"
+                and package["eligible_for_approval"]
+            ):
+                create_approval(
+                    run_directory=run_path,
+                    scene_id=scene_id,
+                    decision="approved_for_compilation",
+                    reviewer="Automated source validation",
+                    notes=(
+                        "Automatically approved because deterministic source "
+                        "validation passed. Visual QA remains a separate gate."
+                    ),
+                )
+                package = self._build_review_package(
+                    result=result,
+                    scene_input=scene_inputs[scene_id],
+                    output_directory=review_dir,
+                    approvals_directory=approvals_dir,
+                )
             packages.append(package)
 
         approved_components = self._build_approved_components(packages)

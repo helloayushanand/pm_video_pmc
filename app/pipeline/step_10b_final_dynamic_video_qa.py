@@ -22,6 +22,10 @@ def _migrate(run_path):
 
 
 def _qa_output_directory(run_path):
+    if (
+        run_path / "10_dynamic_render" / "candidate_video_dynamic.mp4"
+    ).exists():
+        return run_path / "10_dynamic_render" / "final_qa"
     if (run_path / "09_video" / "render_metadata.json").exists():
         return run_path / "09_video" / "final_qa"
     return run_path / "10_dynamic_render" / "final_qa"

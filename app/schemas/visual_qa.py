@@ -20,6 +20,8 @@ class VisualIssue(StrictBaseModel):
 class VisualQAResult(StrictBaseModel):
     approved: bool
 
+    decision_policy_override: bool = False
+
     approved_with_warnings: bool = False
 
     blocking_issue_count: int = Field(

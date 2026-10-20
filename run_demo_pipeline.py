@@ -716,7 +716,7 @@ def runtime_smoke_check(
     run_dir,
     args,
 ):
-    """Visually assess generated scenes, repair once, then retain verified scenes."""
+    """Visually assess generated scenes, repair once, and retain verified scenes."""
 
     approved_before = (
         approved_generated_scene_count(
@@ -789,7 +789,7 @@ def runtime_smoke_check(
         print(
             "\nVisual QA rejected "
             f"{len(repairable)} scene(s); attempting one targeted correction "
-            "per scene."
+            "per scene using the rendered frames."
         )
         pipeline_step(run_dir, "visual_repair")
         repair_report_path = (
@@ -1206,10 +1206,11 @@ def run_demo(args):
             str(run_dir),
         ]
 
-        if args.generate_images:
-            command.append(
-                "--generate-images"
-            )
+        command.append(
+            "--generate-images"
+            if args.generate_images
+            else "--skip-image-generation"
+        )
 
         run_command(
             command
@@ -1376,10 +1377,20 @@ def build_parser():
         "--run-dir"
     )
 
-    parser.add_argument(
+    image_generation = parser.add_mutually_exclusive_group()
+    image_generation.add_argument(
         "--generate-images",
+        dest="generate_images",
         action="store_true",
+        help="Generate planned decorative image assets (enabled by default).",
     )
+    image_generation.add_argument(
+        "--skip-image-generation",
+        dest="generate_images",
+        action="store_false",
+        help="Skip decorative image generation for a lower-cost run.",
+    )
+    parser.set_defaults(generate_images=True)
 
     parser.add_argument(
         "--dynamic-scenes",

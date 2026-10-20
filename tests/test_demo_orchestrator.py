@@ -21,6 +21,18 @@ def test_final_video_qa_is_enabled_by_default_and_can_be_skipped():
     assert preview_skipped.preview_qa is False
 
 
+def test_decorative_image_generation_is_enabled_by_default_and_can_be_skipped():
+    parser = run_demo_pipeline.build_parser()
+
+    defaults = parser.parse_args(["--run-dir", "run"])
+    skipped = parser.parse_args(
+        ["--run-dir", "run", "--skip-image-generation"]
+    )
+
+    assert defaults.generate_images is True
+    assert skipped.generate_images is False
+
+
 def test_resolve_run_prepares_content_without_running_legacy_pipeline(
     monkeypatch, tmp_path
 ):
@@ -485,7 +497,7 @@ def test_runtime_smoke_failure_excludes_scene_without_recompiling(
     ]
 
 
-def test_runtime_smoke_uses_one_visual_repair_and_rechecks_scene(
+def test_runtime_smoke_repairs_once_and_rechecks_scene(
     monkeypatch, tmp_path
 ):
     run_dir = tmp_path / "run"
@@ -574,7 +586,7 @@ def test_runtime_smoke_uses_one_visual_repair_and_rechecks_scene(
             reviewer="Test",
         ),
     )
-
+    assert result["remaining_generated"] == 1
     assert result["remaining_generated"] == 1
     assert calls.count("preview") == 2
     assert calls.count("visual_repair") == 1

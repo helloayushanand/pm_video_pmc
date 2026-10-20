@@ -11,7 +11,7 @@ def test_image_prompt_forbids_documentary_content():
         }
     )
     assert "identifiable real person" in prompt
-    assert "Do not include logos" in prompt
+    assert "Do not create company logos or trademark-like marks" in prompt
 
 
 def test_recalculate_manifest():

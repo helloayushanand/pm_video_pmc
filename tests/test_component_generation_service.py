@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from app.agents.component_generation.agent import ComponentGenerationAgent
-from app.schemas.generated_component import SceneGenerationInput
+from app.schemas.generated_component import (
+    GeneratedComponentOutput,
+    SceneGenerationInput,
+    SourceValidationResult,
+)
 from app.services.component_generation_service import ComponentGenerationService
 
 
@@ -60,6 +64,85 @@ def test_agent_generation_does_not_retry_provider_failure():
         agent.generate(scene)
 
     assert agent.client.responses.calls == 1
+
+
+def test_agent_repair_includes_preview_images_when_supplied():
+    class FakeResponses:
+        def __init__(self):
+            self.call = None
+
+        def parse(self, **kwargs):
+            self.call = kwargs
+            return type(
+                "FakeResponse",
+                (),
+                {
+                    "output_parsed": GeneratedComponentOutput(
+                        scene_id="scene_1",
+                        component_name="Scene1",
+                        source_code="export const Scene1 = () => <div>repaired scene</div>;",
+                        used_primitives=["SceneFrame"],
+                        generation_rationale="Fixed visible defects.",
+                        expected_peak_frame_percentage=0.5,
+                        fallback_component="GenericScene",
+                    ),
+                },
+            )()
+
+    responses = FakeResponses()
+    agent = ComponentGenerationAgent.__new__(ComponentGenerationAgent)
+    agent.client = type(
+        "FakeClient",
+        (),
+        {"responses": responses},
+    )()
+    agent.model = "test-model"
+    agent.repair_prompt = "Repair the component."
+
+    scene = SceneGenerationInput(
+        run_id="run-1",
+        scene_id="scene_1",
+        scene_type="metric",
+        component_name="Scene1",
+        fallback_component="GenericScene",
+        duration_hint_seconds=10,
+        creative_direction={"tone": "executive"},
+        scene_architecture={},
+        approved_facts=["Revenue grew 42%"],
+        available_artifacts=[],
+        allowed_primitives=["SceneFrame"],
+    )
+    component = GeneratedComponentOutput(
+        scene_id="scene_1",
+        component_name="Scene1",
+        source_code="export const Scene1 = () => <div>original scene</div>;",
+        used_primitives=["SceneFrame"],
+        generation_rationale="Original layout.",
+        expected_peak_frame_percentage=0.5,
+        fallback_component="GenericScene",
+    )
+    frames = [
+        {
+            "label": "middle",
+            "frame": 81,
+            "image_url": "data:image/png;base64,cHJldmlldw==",
+        }
+    ]
+
+    agent.repair(
+        scene,
+        component,
+        SourceValidationResult(valid=False),
+        visual_frames=frames,
+    )
+
+    content = responses.call["input"][0]["content"]
+    assert content[0]["type"] == "input_text"
+    assert content[1]["text"] == "Rendered preview frame: middle, frame 81."
+    assert content[2] == {
+        "type": "input_image",
+        "image_url": "data:image/png;base64,cHJldmlldw==",
+    }
 
 
 def test_sdk_contract_uses_current_renderer_prop_declarations(

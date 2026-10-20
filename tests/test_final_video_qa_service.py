@@ -39,6 +39,47 @@ def test_high_issue_blocks():
     assert not FinalVideoQAService._apply_policy(result).approved
 
 
+def test_final_qa_blocks_visual_and_design_system_defects():
+    result = FullVideoCohesionResult(
+        approved=True,
+        overall_score=0.95,
+        typography_consistency_score=0.95,
+        palette_consistency_score=0.95,
+        transition_cohesion_score=0.95,
+        pacing_score=0.95,
+        confidentiality_consistency_score=0.95,
+        summary="The video has readability and composition defects.",
+        issues=[
+            FullVideoIssue(
+                issue_id="contrast",
+                category="contrast_failure",
+                severity="low",
+                description="Supporting text has insufficient contrast.",
+                recommended_change="Use a darker text color.",
+            ),
+            FullVideoIssue(
+                issue_id="empty_space",
+                category="underfilled_composition",
+                severity="low",
+                description="The focal visual occupies too little of the frame.",
+                recommended_change="Scale up the focal visual.",
+            ),
+            FullVideoIssue(
+                issue_id="palette",
+                category="palette_inconsistency",
+                severity="low",
+                description="A generated scene switches to a conflicting palette.",
+                recommended_change="Use the shared render theme.",
+            ),
+        ],
+    )
+
+    updated = FinalVideoQAService._apply_policy(result)
+
+    assert not updated.approved
+    assert updated.blocking_issue_count == 3
+
+
 def test_sample_points_include_boundary():
     manifest = {
         "scene_resolution": [
@@ -184,6 +225,48 @@ def test_master_render_qa_report_is_saved_with_master_video(tmp_path):
     assert _qa_output_directory(tmp_path) == (
         tmp_path / "09_video" / "final_qa"
     )
+
+
+def test_final_qa_prefers_dynamic_render_when_master_also_exists(tmp_path):
+    video_dir = tmp_path / "09_video"
+    spec_dir = tmp_path / "08_render_spec"
+    dynamic_dir = tmp_path / "10_dynamic_render"
+    video_dir.mkdir()
+    spec_dir.mkdir()
+    dynamic_dir.mkdir()
+    static_video = video_dir / "candidate_snapshot.mp4"
+    dynamic_video = dynamic_dir / "candidate_video_dynamic.mp4"
+    static_video.write_bytes(b"static")
+    dynamic_video.write_bytes(b"dynamic")
+    (video_dir / "render_metadata.json").write_text(
+        json.dumps(
+            {
+                "output_path": str(static_video),
+                "result": {"return_code": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (spec_dir / "render_spec.json").write_text(
+        json.dumps({"video": {"fps": 30}, "scenes": []}),
+        encoding="utf-8",
+    )
+    (dynamic_dir / "render_summary.json").write_text(
+        json.dumps({"ready_for_phase_7c": True}),
+        encoding="utf-8",
+    )
+    (dynamic_dir / "renderer_manifest.json").write_text(
+        json.dumps({"scene_resolution": []}),
+        encoding="utf-8",
+    )
+
+    resolved_video, manifest = FinalVideoQAService._resolve_render_inputs(
+        tmp_path
+    )
+
+    assert resolved_video == dynamic_video
+    assert manifest == {"scene_resolution": []}
+    assert _qa_output_directory(tmp_path) == dynamic_dir / "final_qa"
 
 
 def test_dynamic_render_qa_report_uses_dynamic_video_directory(tmp_path):

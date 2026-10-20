@@ -1,6 +1,8 @@
 import React from "react";
 import {
+  Img,
   interpolate,
+  staticFile,
   useCurrentFrame,
 } from "remotion";
 
@@ -118,6 +120,17 @@ export const CandidateIntro: React.FC<
       labelElements[0],
     );
 
+  const approvedPortrait =
+    scene.props.artifacts?.find(
+      (artifact) =>
+        artifact.approved === true &&
+        artifact.artifact_type === "portrait" &&
+        Boolean(artifact.renderer_path),
+    );
+
+  const portraitPath =
+    approvedPortrait?.renderer_path;
+
   /*
    * Intro motion.
    */
@@ -175,15 +188,6 @@ export const CandidateIntro: React.FC<
       },
     );
 
-  /*
-   * Use initials only as the deterministic
-   * fallback visual.
-   *
-   * When an approved portrait is connected
-   * later, the asset renderer can replace
-   * this block.
-   */
-
   const initials =
     candidateName
       .split(" ")
@@ -197,10 +201,7 @@ export const CandidateIntro: React.FC<
       .toUpperCase();
 
   return (
-    <SceneFrame
-      theme={theme}
-      sceneLabel="Profile"
-    >
+    <SceneFrame theme={theme}>
       <div
         style={{
           position:
@@ -214,12 +215,12 @@ export const CandidateIntro: React.FC<
           display: "grid",
 
           gridTemplateColumns:
-            "minmax(0, 1.45fr) minmax(300px, 0.55fr)",
+            "minmax(0, 1.45fr) minmax(360px, 0.65fr)",
 
           alignItems:
             "center",
 
-          gap: 90,
+          gap: 64,
 
           transform:
             `translateY(${translateY}px) scale(${scale})`,
@@ -264,6 +265,9 @@ export const CandidateIntro: React.FC<
 
               color:
                 colours.primary,
+
+              fontFamily:
+                colours.displayFont,
 
               fontSize: 82,
 
@@ -352,8 +356,8 @@ export const CandidateIntro: React.FC<
             position:
               "relative",
 
-            width: 350,
-            height: 350,
+            width: portraitPath ? 430 : 350,
+            height: portraitPath ? 430 : 350,
 
             justifySelf:
               "end",
@@ -363,14 +367,9 @@ export const CandidateIntro: React.FC<
             borderRadius:
               "50%",
 
-            background: `
-              linear-gradient(
-                145deg,
-                ${colours.accent},
-                #315D78 54%,
-                ${colours.primary}
-              )
-            `,
+            background: portraitPath
+              ? "#FFFFFF"
+              : `linear-gradient(145deg, ${colours.accent}, #315D78 54%, ${colours.primary})`,
 
             boxShadow:
               "0 28px 80px rgba(20,20,20,0.18)",
@@ -396,6 +395,21 @@ export const CandidateIntro: React.FC<
               "hidden",
           }}
         >
+          {portraitPath ? (
+            <Img
+              src={staticFile(portraitPath)}
+              alt={approvedPortrait?.alt_text || `${candidateName} portrait`}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                borderRadius: "50%",
+              }}
+            />
+          ) : null}
+
           <div
             style={{
               position:
@@ -411,35 +425,30 @@ export const CandidateIntro: React.FC<
             }}
           />
 
-          <div
-            style={{
-              position:
-                "absolute",
+          {!portraitPath ? (
+            <div
+              style={{
+                position: "absolute",
+                width: 115,
+                height: 115,
+                right: -20,
+                top: 18,
+                borderRadius: "50%",
+                background: "rgba(255,255,255,0.10)",
+              }}
+            />
+          ) : null}
 
-              width: 115,
-              height: 115,
-
-              right: -20,
-              top: 18,
-
-              borderRadius:
-                "50%",
-
-              background:
-                "rgba(255,255,255,0.10)",
-            }}
-          />
-
-          <span
-            style={{
-              position:
-                "relative",
-
-              zIndex: 2,
-            }}
-          >
-            {initials}
-          </span>
+          {!portraitPath ? (
+            <span
+              style={{
+                position: "relative",
+                zIndex: 2,
+              }}
+            >
+              {initials}
+            </span>
+          ) : null}
         </div>
       </div>
     </SceneFrame>

@@ -30,6 +30,7 @@ from app.pipeline.step_10_run_quality_checks import run_quality_checks
 from app.utils.logging import setup_logging
 from app.utils.run_manager import PIPELINE_STEPS, RunManager
 from app.pipeline.step_11_calculate_costs import calculate_costs
+from app.utils.json_utils import load_json
 
 STEP_ALIASES = {
     "prepare": "prepare_document",
@@ -81,7 +82,6 @@ STEP_ALIASES = {
     "costs": "calculate_costs",
     "calculate_costs": "calculate_costs",
 }
-
 
 def build_argument_parser():
     """Create the root pipeline command-line parser."""
@@ -148,6 +148,30 @@ def build_argument_parser():
             f"Default: {settings.openai_model}"
         ),
     )
+
+    parser.add_argument(
+        "--visual-repair-model",
+        default=settings.openai_visual_repair_model,
+        help=(
+            "OpenAI model used only for visual component repair. "
+            f"Default: {settings.openai_visual_repair_model}"
+        ),
+    )
+
+    image_generation = parser.add_mutually_exclusive_group()
+    image_generation.add_argument(
+        "--generate-images",
+        dest="generate_images",
+        action="store_true",
+        help="Generate planned decorative image artifacts (enabled by default).",
+    )
+    image_generation.add_argument(
+        "--skip-image-generation",
+        dest="generate_images",
+        action="store_false",
+        help="Skip decorative image generation for a lower-cost run.",
+    )
+    parser.set_defaults(generate_images=True)
 
     parser.add_argument(
         "--render-dpi",
@@ -364,14 +388,14 @@ def execute_step(
     if step_name == "generate_artifacts":
         return generate_artifacts(
             run_directory=run_directory,
-            generate_images=False,
+            generate_images=arguments.generate_images,
         )
 
     if step_name == "generate_components":
         return generate_components(
             run_directory=run_directory,
             model=arguments.model,
-            max_scenes=2,
+            max_scenes=5,
         )
 
     if step_name == "review_components":
@@ -403,7 +427,7 @@ def execute_step(
     if step_name == "repair_visual_components":
         return repair_visual_components(
             run_directory=run_directory,
-            model=arguments.model,
+            model=arguments.visual_repair_model,
         )
 
     if step_name == "publish_dynamic_components":
@@ -459,6 +483,62 @@ def execute_step(
 
     raise ValueError(
         f"Unsupported pipeline step: {step_name}"
+    )
+
+
+def run_visual_repair_pass(run_directory, arguments):
+    """Apply one visual repair pass and verify any changed component sources."""
+
+    preview_report_path = (
+        Path(run_directory)
+        / "05f_component_previews"
+        / "preview_qa_report.json"
+    )
+    preview_report = load_json(preview_report_path)
+    if preview_report.get("ready_for_phase_7"):
+        return {"repair_rounds": 0, "ready_for_phase_7": True}
+
+    repair_report = execute_step(
+        "repair_visual_components",
+        run_directory,
+        arguments,
+    )
+    if not repair_report.get("repaired_count"):
+        reasons = [
+            f"{item.get('scene_id')}: {item.get('reason')}"
+            for item in (
+                repair_report.get("skipped", [])
+                + repair_report.get("failed", [])
+            )
+        ]
+        detail = "; ".join(reasons) or "no source changes were produced"
+        raise RuntimeError(
+            "Visual QA remains blocked and the single repair pass "
+            f"produced no valid source changes ({detail})."
+        )
+
+    execute_step("review_components", run_directory, arguments)
+    execute_step("compile_components", run_directory, arguments)
+    execute_step("repair_compiler_errors", run_directory, arguments)
+    preview_summary = execute_step(
+        "preview_components",
+        run_directory,
+        arguments,
+    )
+    if preview_summary.get("ready_for_phase_7"):
+        return {"repair_passes": 1, "ready_for_phase_7": True}
+
+    latest_report = load_json(preview_report_path)
+    unapproved_scenes = [
+        item.get("scene_id", "unknown")
+        for item in latest_report.get("results", [])
+        if not item.get("visual_approved")
+    ]
+    blocked_scenes = ", ".join(unapproved_scenes) or "unknown scenes"
+    raise RuntimeError(
+        "Per-scene visual QA is still not approved after the single "
+        "visual-repair pass. "
+        f"Unapproved scenes: {blocked_scenes}."
     )
 
 
@@ -605,11 +685,14 @@ def main():
             remaining_steps = steps_to_run
 
         for step_name in remaining_steps:
-            execute_step(
-                step_name=step_name,
-                run_directory=run_directory,
-                arguments=arguments,
-            )
+            if step_name == "repair_visual_components" and not arguments.only_step:
+                run_visual_repair_pass(run_directory, arguments)
+            else:
+                execute_step(
+                    step_name=step_name,
+                    run_directory=run_directory,
+                    arguments=arguments,
+                )
 
         print_run_summary(
             run_directory

@@ -5,6 +5,7 @@ import base64
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from PIL import Image
@@ -176,6 +177,42 @@ class ComponentPreviewService:
             )
         return preview_source_text
 
+    @staticmethod
+    def _browser_executable(renderer):
+        browser_root = renderer / "node_modules" / ".remotion" / "chrome-headless-shell"
+        executable_name = (
+            "chrome-headless-shell.exe"
+            if sys.platform == "win32"
+            else "chrome-headless-shell"
+        )
+        platform_token = (
+            "win"
+            if sys.platform == "win32"
+            else "mac"
+            if sys.platform == "darwin"
+            else "linux"
+        )
+        candidates = [
+            path
+            for path in browser_root.rglob(executable_name)
+            if path.is_file()
+            and any(
+                platform_token in part.lower()
+                for part in path.relative_to(browser_root).parts
+            )
+        ] if browser_root.exists() else []
+        if not candidates:
+            raise ComponentPreviewError(
+                "Remotion's Chrome headless-shell executable was not found "
+                f"for this platform under {browser_root}."
+            )
+        if len(candidates) > 1:
+            raise ComponentPreviewError(
+                "Multiple Remotion Chrome executables match this platform "
+                f"under {browser_root}: {candidates}"
+            )
+        return candidates[0]
+
     def _render_scene(
         self,
         run_path,
@@ -258,6 +295,7 @@ class ComponentPreviewService:
         rendered = []
         render_errors = []
         remotion = renderer / "node_modules" / ".bin" / "remotion.cmd"
+        browser_executable = self._browser_executable(renderer)
 
         for label, frame in frame_map.items():
             destination = preview_dir / f"{label}_{frame:04d}.png"
@@ -269,6 +307,8 @@ class ComponentPreviewService:
                 str(destination),
                 "--frame",
                 str(frame),
+                "--browser-executable",
+                str(browser_executable),
                 "--log",
                 "error",
             ]
@@ -412,6 +452,15 @@ class ComponentPreviewService:
             "missing_central_visual",
             "unreadable_text",
             "text_clipping",
+            "text_overlap",
+            "text_overflow",
+            "contrast_failure",
+            "low_contrast",
+            "underfilled_composition",
+            "internal_commentary",
+            "repeated_confidentiality",
+            "safe_area_violation",
+            "edge_collision",
             "severe_overlap",
             "misleading_representation",
         }
@@ -445,6 +494,7 @@ class ComponentPreviewService:
             ):
                 blocking_issues.append(issue)
 
+        model_approved = visual_result.approved
         visual_approved = (
             not blocking_issues
             and visual_result.overall_score >= 0.70
@@ -457,6 +507,9 @@ class ComponentPreviewService:
         )
 
         visual_result.approved = visual_approved
+        visual_result.decision_policy_override = (
+            model_approved != visual_approved
+        )
         visual_result.approved_with_warnings = (
             visual_approved and warning_count > 0
         )

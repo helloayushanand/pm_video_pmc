@@ -25,6 +25,10 @@ class Settings:
 
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-5")
+    openai_visual_repair_model: str = os.getenv(
+        "OPENAI_VISUAL_REPAIR_MODEL",
+        "gpt-5",
+    )
     openai_tts_model: str = os.getenv(
         "OPENAI_TTS_MODEL",
         "gpt-4o-mini-tts",

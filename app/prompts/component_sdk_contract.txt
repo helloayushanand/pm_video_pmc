@@ -303,8 +303,10 @@ Common contracts:
 SceneFrame
 - theme required
 - contains scene children
-- background optional
-- sceneLabel optional
+- background is accepted for compatibility but generated scenes must not override the shared renderer background
+- showBrand is accepted for compatibility but generated scenes must not hide shared brand chrome
+- sceneLabel optional for compatibility, but is not displayed
+- do not render confidentiality labels here; CandidateVideo renders the single label at video end
 
 SafeArea
 - contains children
@@ -356,8 +358,7 @@ StaggerGroup
 - use only documented stagger/reveal props
 
 ConfidentialityLabel
-- text required
-- theme required
+- do not use in scene components; CandidateVideo adds the single label at video end
 
 ============================================================
 SOURCE SAFETY

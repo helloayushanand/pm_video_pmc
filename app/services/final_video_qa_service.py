@@ -118,6 +118,25 @@ class FinalVideoQAService:
 
     @staticmethod
     def _resolve_render_inputs(run_path):
+        dynamic_dir = run_path / "10_dynamic_render"
+        dynamic_video = dynamic_dir / "candidate_video_dynamic.mp4"
+        dynamic_summary_path = dynamic_dir / "render_summary.json"
+        dynamic_manifest_path = dynamic_dir / "renderer_manifest.json"
+        if dynamic_video.exists():
+            if (
+                not dynamic_summary_path.exists()
+                or not dynamic_manifest_path.exists()
+            ):
+                raise FileNotFoundError(
+                    "Dynamic-render metadata is incomplete."
+                )
+            dynamic_summary = load_json(dynamic_summary_path)
+            if not dynamic_summary.get("ready_for_phase_7c"):
+                raise FinalVideoQAError(
+                    "Dynamic-render technical checks are not approved."
+                )
+            return dynamic_video, load_json(dynamic_manifest_path)
+
         video_dir = run_path / "09_video"
         metadata_path = video_dir / "render_metadata.json"
         render_spec_path = run_path / "08_render_spec" / "render_spec.json"
@@ -148,29 +167,10 @@ class FinalVideoQAService:
             )
             return video_path, renderer_manifest
 
-        dynamic_dir = run_path / "10_dynamic_render"
-        dynamic_video = dynamic_dir / "candidate_video_dynamic.mp4"
-        dynamic_summary_path = dynamic_dir / "render_summary.json"
-        dynamic_manifest_path = dynamic_dir / "renderer_manifest.json"
-
-        if not dynamic_video.exists():
-            raise FileNotFoundError(
-                "Neither complete master-render outputs nor a dynamic "
-                "rendered video are available for final QA."
-            )
-        if (
-            not dynamic_summary_path.exists()
-            or not dynamic_manifest_path.exists()
-        ):
-            raise FileNotFoundError(
-                "Dynamic-render metadata is incomplete."
-            )
-        dynamic_summary = load_json(dynamic_summary_path)
-        if not dynamic_summary.get("ready_for_phase_7c"):
-            raise FinalVideoQAError(
-                "Dynamic-render technical checks are not approved."
-            )
-        return dynamic_video, load_json(dynamic_manifest_path)
+        raise FileNotFoundError(
+            "Neither complete master-render outputs nor a dynamic "
+            "rendered video are available for final QA."
+        )
 
     @staticmethod
     def _master_render_manifest(render_spec):
@@ -250,7 +250,23 @@ class FinalVideoQAService:
 
     @staticmethod
     def _apply_policy(result):
-        blocking_categories = {"factual_integrity", "prohibited_content", "missing_confidentiality", "render_failure", "text_clipping", "severe_overlap", "black_frame"}
+        blocking_categories = {
+            "factual_integrity",
+            "prohibited_content",
+            "missing_confidentiality",
+            "render_failure",
+            "text_clipping",
+            "text_overlap",
+            "contrast_failure",
+            "low_contrast",
+            "underfilled_composition",
+            "internal_commentary",
+            "repeated_confidentiality",
+            "palette_inconsistency",
+            "typography_inconsistency",
+            "severe_overlap",
+            "black_frame",
+        }
         blocking = []
         for issue in result.issues:
             category = issue.category.strip().lower().replace("-", "_").replace(" ", "_")

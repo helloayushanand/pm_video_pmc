@@ -233,8 +233,11 @@ def run_demo(args):
         "--run-dir",
         str(run_dir),
     ]
-    if args.generate_images:
-        artifact_command.append("--generate-images")
+    artifact_command.append(
+        "--generate-images"
+        if args.generate_images
+        else "--skip-image-generation"
+    )
     run_command(artifact_command)
 
     pending = artifact_gate(run_dir)
@@ -378,7 +381,18 @@ def build_parser():
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--input")
     source.add_argument("--run-dir")
-    parser.add_argument("--generate-images", action="store_true")
+    image_generation = parser.add_mutually_exclusive_group()
+    image_generation.add_argument(
+        "--generate-images",
+        dest="generate_images",
+        action="store_true",
+    )
+    image_generation.add_argument(
+        "--skip-image-generation",
+        dest="generate_images",
+        action="store_false",
+    )
+    parser.set_defaults(generate_images=True)
     parser.add_argument("--dynamic-scenes", type=int, default=1)
     parser.add_argument("--auto-approve-safe", action="store_true")
     parser.add_argument("--auto-approve-final", action="store_true")

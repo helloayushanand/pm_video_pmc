@@ -43,10 +43,6 @@ type SceneFrameProps =
 export const SceneFrame:
 React.FC<SceneFrameProps> = ({
   theme,
-  background,
-  showBrand = true,
-  showConfidentiality = true,
-  sceneLabel,
   children,
 }) => {
   const frame = useCurrentFrame();
@@ -73,60 +69,23 @@ React.FC<SceneFrameProps> = ({
     },
   );
 
-  const brand = showBrand
-    ? React.createElement(
-        "div",
-        {
-          style: {
-            position: "absolute",
-            left: safeArea.horizontal,
-            top: 35,
-            color: theme.accent,
-            fontFamily: theme.bodyFont,
-            fontSize:
-              typography.label,
-            fontWeight: 700,
-            letterSpacing: 2.5,
-            textTransform: "uppercase",
-          },
-        },
-        "Positive Moves",
-      )
-    : null;
-
-  const confidentiality =
-    showConfidentiality
-      ? React.createElement(
-          ConfidentialityLabel,
-          {
-            text:
-              theme.confidentialityText,
-            theme,
-          },
-        )
-      : null;
-
-  const label = sceneLabel
-    ? React.createElement(
-        "div",
-        {
-          style: {
-            position: "absolute",
-            left: safeArea.horizontal,
-            bottom: 35,
-            color:
-              theme.foregroundMuted,
-            fontFamily:
-              theme.bodyFont,
-            fontSize:
-              typography.caption,
-            letterSpacing: 1,
-            opacity: 0.72,
-          },
-        },
-        sceneLabel,
-      )
-    : null;
+  const brand = React.createElement(
+    "div",
+    {
+      style: {
+        position: "absolute",
+        left: 46,
+        top: 39,
+        color: theme.accent,
+        fontFamily: theme.bodyFont,
+        fontSize: 17,
+        fontWeight: 700,
+        letterSpacing: 2.5,
+        textTransform: "uppercase",
+      },
+    },
+    "Positive Moves",
+  );
 
   const content =
     React.createElement(
@@ -151,27 +110,30 @@ React.FC<SceneFrameProps> = ({
         color: theme.foreground,
         fontFamily: theme.bodyFont,
         background:
-          background
-          || (
-            "radial-gradient("
-            + "circle at 82% 16%, "
-            + theme.accent
-            + "22 0%, transparent 32%), "
-            + "linear-gradient("
-            + "135deg, "
-            + theme.background
-            + " 0%, "
-            + theme.surface
-            + " 54%, "
-            + theme.background
-            + " 100%)"
-          ),
+          "radial-gradient("
+          + "circle at 82% 16%, "
+          + theme.accent
+          + "22 0%, transparent 32%), "
+          + "linear-gradient("
+          + "135deg, "
+          + theme.background
+          + " 0%, #FFFFFF 54%, "
+          + theme.background
+          + " 100%)",
       },
     },
     brand,
-    confidentiality,
-    label,
     content,
+    React.createElement("div", {
+      style: {
+        position: "absolute",
+        left: 0,
+        bottom: 0,
+        width: "100%",
+        height: 9,
+        background: theme.accent,
+      },
+    }),
   );
 };
 

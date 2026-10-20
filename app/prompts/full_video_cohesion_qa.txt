@@ -28,13 +28,20 @@ A consistent design system should still exhibit scene-to-scene variation. Flag a
 - repeated card-grid compositions
 - metrics displayed only as text where approved visualization should be visible
 - underuse of approved imagery
+- production notes, implementation commentary, component names, or other non-viewer-facing text
 - lack of substantive visual peaks
 - generated scenes visually indistinguishable from generic static text cards
 
 Do not require every scene to be highly graphical. Utility scenes such as availability or closing may intentionally remain simple.
 
+CONFIDENTIALITY AND VIEWER-FACING COPY
+Show the configured confidentiality label exactly once, on the final scene at the end of the video. It must not appear in earlier scenes. Reject repeated labels, internal production notes, component/scene IDs, source/page references, or design explanations in visible copy.
+
+DESIGN SYSTEM CONTINUITY
+All scenes must use one shared brand system: the supplied render theme's light background treatment, typography families, text colors, accents, top-left brand mark and bottom accent rule. Generated and library scenes may use different compositions, imagery and secondary accent placement, but must not switch to a different full-frame background, typography family, or incompatible palette. Treat clear generated/library design-system breaks as blocking palette_inconsistency or typography_inconsistency issues; do not block harmless variation in layout.
+
 BLOCKING POLICY
-Set blocking=true only for factual inaccuracies, prohibited content, missing mandatory confidentiality, missing/invisible central generated content, unreadable/clipped essential text, severe overlap, severe contrast failure, major black/broken frames, or transition/render defects that materially interrupt viewing.
+Set blocking=true for factual inaccuracies, prohibited content, a missing final-scene confidentiality label, repeated confidentiality labels in earlier scenes, visible internal production commentary, missing/invisible central generated content, unreadable/clipped essential text, any collision involving essential text, low contrast, a severely underfilled focal composition, a clear palette_inconsistency or typography_inconsistency between generated and library scenes, major black/broken frames, or transition/render defects that materially interrupt viewing. For text contrast, treat body text below 4.5:1 and large text below 3:1 as low contrast. When a scene brief calls for a chart, timeline, diagram, or image-led focal visual, it should occupy at least 60% of the safe-area width and 35% of its height unless its supplied intent clearly calls for deliberate negative space.
 
 Medium and low aesthetic concerns remain warnings by default. Do not reject solely because scenes use different compositions or accent colors.
 

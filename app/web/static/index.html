@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>PM Video Pipeline</title>
+<style>
+  :root {
+    --bg: #F5F4F1;
+    --surface: #FFFFFF;
+    --text: #111318;
+    --muted: #5F6872;
+    --accent: #B79A5B;
+    --accent-sec: #315D78;
+    --border: #E0DCD4;
+    --success: #16A34A;
+    --error: #DC2626;
+    --radius: 12px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .header {
+    width: 100%;
+    padding: 24px 32px;
+    background: linear-gradient(135deg, #0B1D2E 0%, #1A3A54 100%);
+    color: #F5F4F1;
+    text-align: center;
+  }
+  .header h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }
+  .header p { font-size: 14px; opacity: 0.7; margin-top: 4px; }
+  .container {
+    width: 100%;
+    max-width: 640px;
+    padding: 32px 16px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    margin-bottom: 24px;
+  }
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--accent);
+    background: rgba(183, 154, 91, 0.04);
+  }
+  .upload-zone svg { width: 48px; height: 48px; color: var(--muted); margin-bottom: 12px; }
+  .upload-zone h3 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+  .upload-zone p { font-size: 13px; color: var(--muted); }
+  .upload-zone input { display: none; }
+  .file-name {
+    margin-top: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent-sec);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 14px 24px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+  .btn-download { background: var(--success); color: #fff; margin-top: 16px; }
+  .btn-download:hover { opacity: 0.9; }
+  .btn-reset { background: transparent; color: var(--muted); border: 1px solid var(--border); margin-top: 8px; }
+
+  .progress-section { display: none; }
+  .progress-section.active { display: block; }
+  .step-list { list-style: none; }
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .step-item:last-child { border-bottom: none; }
+  .step-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .step-icon.pending { background: var(--border); color: var(--muted); }
+  .step-icon.running { background: var(--accent); color: #fff; animation: pulse 1.5s infinite; }
+  .step-icon.done { background: var(--success); color: #fff; }
+  .step-icon.failed { background: var(--error); color: #fff; }
+  .step-name { flex: 1; }
+  .step-detail { font-size: 12px; color: var(--muted); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  .result-section { display: none; text-align: center; }
+  .result-section.active { display: block; }
+  .result-section .check-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--success);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    margin-bottom: 16px;
+  }
+  .result-section h2 { font-size: 20px; margin-bottom: 4px; }
+  .result-section .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+
+  .error-msg {
+    display: none;
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 8px;
+    color: var(--error);
+    font-size: 13px;
+  }
+  .error-msg.active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Candidate Video Pipeline</h1>
+  <p>Upload a dossier PDF and get a rendered video in minutes</p>
+</div>
+
+<div class="container">
+
+  <!-- Upload Card -->
+  <div class="card" id="upload-card">
+    <div class="upload-zone" id="drop-zone">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z"/>
+      </svg>
+      <h3>Drop your dossier PDF here</h3>
+      <p>or click to browse</p>
+      <input type="file" id="file-input" accept=".pdf"/>
+      <div class="file-name" id="file-name"></div>
+    </div>
+    <button class="btn btn-primary" id="generate-btn" disabled style="margin-top:20px">
+      Generate Video
+    </button>
+    <div class="error-msg" id="upload-error"></div>
+  </div>
+
+  <!-- Progress Card -->
+  <div class="card progress-section" id="progress-card">
+    <h3 style="margin-bottom:16px;font-size:16px;">Pipeline Progress</h3>
+    <ul class="step-list" id="step-list">
+      <li class="step-item" data-step="prepare_document">
+        <div class="step-icon pending">1</div>
+        <span class="step-name">Prepare Document</span>
+        <span class="step-detail"></span>
+      </li>
+      <li class="step-item" data-step="extract_dossier">
+        <div class="step-icon pending">2</div>
+        <span class="step-name">Extract Dossier</span>
+        <span class="step-detail"></span>
+      </li>
+      <li class="step-item" data-step="select_video_content">
+        <div class="step-icon pending">3</div>
+        <span class="step-name">Select Video Content</span>
+        <span class="step-detail"></span>
+      </li>
+      <li class="step-item" data-step="generate_scenes">
+        <div class="step-icon pending">4</div>
+        <span class="step-name">Design Scenes (AI)</span>
+        <span class="step-detail"></span>
+      </li>
+      <li class="step-item" data-step="render_video">
+        <div class="step-icon pending">5</div>
+        <span class="step-name">Render Video</span>
+        <span class="step-detail"></span>
+      </li>
+    </ul>
+    <div class="error-msg" id="pipeline-error"></div>
+  </div>
+
+  <!-- Result Card -->
+  <div class="card result-section" id="result-card">
+    <div class="check-icon">&#10003;</div>
+    <h2 id="result-title">Video Ready</h2>
+    <p class="sub" id="result-sub"></p>
+    <button class="btn btn-download" id="download-btn">Download MP4</button>
+    <button class="btn btn-reset" id="reset-btn">Generate Another</button>
+  </div>
+
+</div>
+
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileNameEl = document.getElementById('file-name');
+const generateBtn = document.getElementById('generate-btn');
+const uploadCard = document.getElementById('upload-card');
+const progressCard = document.getElementById('progress-card');
+const resultCard = document.getElementById('result-card');
+const uploadError = document.getElementById('upload-error');
+const pipelineError = document.getElementById('pipeline-error');
+
+let selectedFile = null;
+let currentJobId = null;
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.toLowerCase().endsWith('.pdf')) selectFile(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) selectFile(fileInput.files[0]);
+});
+
+function selectFile(f) {
+  selectedFile = f;
+  fileNameEl.textContent = f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)';
+  generateBtn.disabled = false;
+  uploadError.classList.remove('active');
+}
+
+generateBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  generateBtn.disabled = true;
+  uploadError.classList.remove('active');
+
+  const form = new FormData();
+  form.append('file', selectedFile);
+
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Upload failed');
+    }
+    const { job_id } = await res.json();
+    currentJobId = job_id;
+    uploadCard.style.display = 'none';
+    progressCard.classList.add('active');
+    listenForUpdates(job_id);
+  } catch (e) {
+    uploadError.textContent = e.message;
+    uploadError.classList.add('active');
+    generateBtn.disabled = false;
+  }
+});
+
+function listenForUpdates(jobId) {
+  const es = new EventSource('/api/status/' + jobId);
+
+  es.addEventListener('step', (e) => {
+    const data = JSON.parse(e.data);
+    updateStep(data.step, data.status, data.detail);
+  });
+
+  es.addEventListener('complete', (e) => {
+    es.close();
+    const data = JSON.parse(e.data);
+    if (data.status === 'done') {
+      progressCard.classList.remove('active');
+      resultCard.classList.add('active');
+      document.getElementById('result-sub').textContent = 'Your video is ready to download.';
+      document.getElementById('download-btn').onclick = () => {
+        window.location.href = '/api/download/' + jobId;
+      };
+    } else {
+      pipelineError.textContent = data.error || 'Pipeline failed.';
+      pipelineError.classList.add('active');
+    }
+  });
+
+  es.onerror = () => {
+    es.close();
+    // Fall back to polling
+    pollStatus(jobId);
+  };
+}
+
+async function pollStatus(jobId) {
+  try {
+    const res = await fetch('/api/status/' + jobId + '/poll');
+    const data = await res.json();
+    for (const step of (data.steps || [])) {
+      updateStep(step.step, step.status, step.detail);
+    }
+    if (data.status === 'done') {
+      progressCard.classList.remove('active');
+      resultCard.classList.add('active');
+      document.getElementById('download-btn').onclick = () => {
+        window.location.href = '/api/download/' + jobId;
+      };
+    } else if (data.status === 'failed') {
+      pipelineError.textContent = data.error || 'Pipeline failed.';
+      pipelineError.classList.add('active');
+    } else {
+      setTimeout(() => pollStatus(jobId), 2000);
+    }
+  } catch { setTimeout(() => pollStatus(jobId), 3000); }
+}
+
+function updateStep(stepName, status, detail) {
+  const item = document.querySelector(`[data-step="${stepName}"]`);
+  if (!item) return;
+  const icon = item.querySelector('.step-icon');
+  const detailEl = item.querySelector('.step-detail');
+
+  icon.className = 'step-icon ' + status;
+  if (status === 'done') icon.innerHTML = '&#10003;';
+  else if (status === 'failed') icon.innerHTML = '&#10007;';
+  else if (status === 'running') icon.innerHTML = '&#9679;';
+
+  if (detail) detailEl.textContent = detail;
+}
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  resultCard.classList.remove('active');
+  uploadCard.style.display = 'block';
+  selectedFile = null;
+  fileNameEl.textContent = '';
+  fileInput.value = '';
+  generateBtn.disabled = true;
+  pipelineError.classList.remove('active');
+  // Reset all steps
+  document.querySelectorAll('.step-icon').forEach((el, i) => {
+    el.className = 'step-icon pending';
+    el.innerHTML = String(i + 1);
+  });
+  document.querySelectorAll('.step-detail').forEach(el => el.textContent = '');
+});
+</script>
+</body>
+</html>

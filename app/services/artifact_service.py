@@ -10,6 +10,7 @@ from pathlib import Path
 import pymupdf
 from openai import OpenAI
 from PIL import Image
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import RENDERER_DIR, settings
 from app.schemas.artifact_plan import (
@@ -31,6 +32,15 @@ logger = get_logger(__name__)
 
 class ArtifactServiceError(Exception):
     """Base exception for artifact-stage failures."""
+
+
+class PortraitCandidateSelection(BaseModel):
+    """Structured result for visual selection of a dossier headshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str | None
+    confidence: float = Field(ge=0, le=1)
 
 
 class ArtifactService:
@@ -74,6 +84,23 @@ class ArtifactService:
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
+        extracted_candidates = self._extract_pdf_images(
+            run_path=run_path,
+            output_directory=extracted_directory,
+        )
+        portrait_candidate = self._select_candidate_portrait(extracted_candidates)
+        if portrait_candidate:
+            portrait_candidate["is_candidate_portrait"] = True
+            self._configure_candidate_portrait(creative_plan, draft)
+            save_json(
+                creative_plan,
+                creative_plan_path,
+            )
+        save_json(
+            extracted_candidates,
+            output_path / "extracted_image_candidates.json",
+        )
+
         plan = self._build_plan(
             candidate_name=candidate_name,
             creative_direction=creative_direction,
@@ -81,15 +108,6 @@ class ArtifactService:
             global_notes=draft.get("global_artifact_notes", []),
         )
         save_json(plan.model_dump(mode="json"), output_path / "artifact_plan.json")
-
-        extracted_candidates = self._extract_pdf_images(
-            run_path=run_path,
-            output_directory=extracted_directory,
-        )
-        save_json(
-            extracted_candidates,
-            output_path / "extracted_image_candidates.json",
-        )
 
         records = []
         for artifact in plan.artifacts:
@@ -123,6 +141,197 @@ class ArtifactService:
             manifest.failed_artifact_count,
         )
         return {"plan": plan, "manifest": manifest, "validation": validation}
+
+    def _select_candidate_portrait(self, extracted_candidates):
+        if not extracted_candidates or self.client is None:
+            return None
+
+        content = [
+            {
+                "type": "input_text",
+                "text": (
+                    "Select the first image in the supplied order that clearly "
+                    "shows a real person's face or head-and-shoulders portrait "
+                    "suitable for the candidate introduction. Ignore decorative "
+                    "frames, shapes, logos, charts, and text. Do not infer who "
+                    "the person is. If no image is clearly a portrait, return "
+                    "candidate_id=null and confidence=0. Return an ID only from "
+                    "the labels below."
+                ),
+            }
+        ]
+        candidates_by_id = {}
+        for index, candidate in enumerate(extracted_candidates, start=1):
+            candidate_id = candidate.get("candidate_id")
+            image_path = Path(candidate["path"]).expanduser().resolve()
+            if not candidate_id or not image_path.is_file():
+                raise ArtifactServiceError(
+                    f"Extracted image candidate is missing or unavailable: {image_path}"
+                )
+            candidates_by_id[candidate_id] = candidate
+            content.extend(
+                [
+                    {
+                        "type": "input_text",
+                        "text": f"Image {index}, candidate ID: {candidate_id}",
+                    },
+                    {
+                        "type": "input_image",
+                        "image_url": self._image_as_data_url(image_path),
+                        "detail": "high",
+                    },
+                ]
+            )
+
+        try:
+            response = self.client.responses.parse(
+                model=settings.openai_model,
+                input=[{"role": "user", "content": content}],
+                text_format=PortraitCandidateSelection,
+            )
+        except Exception as error:
+            raise ArtifactServiceError(
+                f"Unable to identify a candidate headshot in extracted images: {error}"
+            ) from error
+
+        selection = response.output_parsed
+        if selection is None:
+            raise ArtifactServiceError(
+                "The visual headshot selector returned no structured result."
+            )
+        if selection.candidate_id is None:
+            logger.info("No candidate headshot was found in extracted PDF images.")
+            return None
+        candidate = candidates_by_id.get(selection.candidate_id)
+        if candidate is None:
+            raise ArtifactServiceError(
+                "The visual headshot selector returned an unknown image candidate ID."
+            )
+        if selection.confidence < 0.7:
+            logger.warning(
+                "A possible candidate headshot was found, but confidence %.2f "
+                "is below the approval threshold.",
+                selection.confidence,
+            )
+            return None
+
+        candidate["portrait_detection_confidence"] = selection.confidence
+        logger.info(
+            "Visually verified extracted candidate headshot %s (confidence %.2f).",
+            candidate.get("filename", selection.candidate_id),
+            selection.confidence,
+        )
+        return candidate
+
+    @staticmethod
+    def _image_as_data_url(image_path):
+        path = Path(image_path)
+        mime_type = mimetypes.guess_type(path.name)[0]
+        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+            raise ArtifactServiceError(
+                f"Unsupported extracted image type for visual selection: {path.suffix}"
+            )
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:{mime_type};base64,{encoded}"
+
+    @staticmethod
+    def _configure_candidate_portrait(creative_plan, draft):
+        scene_briefs = draft.get("scene_briefs", [])
+        intro_scene = next(
+            (
+                scene
+                for scene in scene_briefs
+                if scene.get("scene_type") == "candidate_intro"
+                or "intro" in scene.get("scene_id", "").lower()
+            ),
+            None,
+        )
+        if intro_scene is None:
+            raise ArtifactServiceError(
+                "A candidate headshot was found, but the creative plan has no "
+                "intro scene to display it."
+            )
+
+        requirements = intro_scene.setdefault("artifact_requirements", [])
+        portrait_requirement = next(
+            (
+                requirement
+                for requirement in requirements
+                if isinstance(requirement, dict)
+                and (
+                    "portrait" in str(requirement.get("artifact_type", "")).lower()
+                    or "headshot" in str(requirement.get("artifact_type", "")).lower()
+                    or "portrait" in str(requirement.get("artifact_id", "")).lower()
+                )
+            ),
+            None,
+        )
+        if portrait_requirement is None:
+            portrait_requirement = {
+                "artifact_id": "art_candidate_portrait",
+                "required": True,
+                "fallback_strategy": "typography_only",
+                "generation_constraints": [],
+            }
+            requirements.append(portrait_requirement)
+
+        portrait_requirement.update(
+            {
+                "artifact_type": "portrait",
+                "source_strategy": ArtifactStrategy.APPROVED_LOCAL_ASSET.value,
+                "factual_status": FactualStatus.FACTUAL.value,
+                "purpose": "Candidate headshot extracted from the source dossier.",
+                "visual_brief": (
+                    "Use the visually verified candidate headshot extracted from "
+                    "the source dossier as the intro scene's portrait."
+                ),
+                "fallback_strategy": "typography_only",
+                "generation_constraints": [],
+            }
+        )
+
+        direction = draft.setdefault("creative_direction", {})
+        direction["image_treatment"] = (
+            "Use the visually verified dossier headshot in the candidate intro; "
+            "use decorative imagery elsewhere."
+        )
+        direction["prohibited_treatments"] = [
+            treatment
+            for treatment in direction.get("prohibited_treatments", [])
+            if "candidate photography" not in str(treatment).lower()
+        ]
+        for key in (
+            "visual_story",
+            "layout_intent",
+            "focal_element",
+            "visual_hierarchy",
+            "supporting_elements",
+            "animation_intent",
+        ):
+            if key in intro_scene:
+                intro_scene[key] = ArtifactService._replace_illustrated_portrait(
+                    intro_scene[key]
+                )
+
+        creative_plan["draft"] = draft
+
+    @staticmethod
+    def _replace_illustrated_portrait(value):
+        if isinstance(value, str):
+            return (
+                value.replace("Illustrated portrait", "Candidate headshot")
+                .replace("illustrated portrait", "candidate headshot")
+                .replace("illustrated (non-photographic) portrait", "candidate headshot")
+                .replace(" (masked vector illustration)", "")
+                .replace("masked vector illustration", "candidate headshot")
+                .replace("vector illustration", "candidate headshot")
+            )
+        if isinstance(value, list):
+            return [
+                ArtifactService._replace_illustrated_portrait(item)
+                for item in value
+            ]
+        return value
 
     def _build_plan(self, candidate_name, creative_direction, scene_briefs, global_notes):
         artifacts = []
@@ -384,7 +593,41 @@ class ArtifactService:
                 validation_warnings=["Use the configured fallback strategy."],
             )
 
-        selected = extracted_candidates[0]
+        if artifact.artifact_type == ArtifactType.PORTRAIT:
+            selected = next(
+                (
+                    candidate
+                    for candidate in extracted_candidates
+                    if candidate.get("is_candidate_portrait") is True
+                ),
+                None,
+            )
+            if selected is None:
+                return ArtifactRecord(
+                    **base_kwargs,
+                    status=ArtifactStatus.FALLBACK,
+                    approved=False,
+                    source_description=(
+                        "No extracted image was visually verified as a candidate portrait."
+                    ),
+                    validation_warnings=[
+                        "Use the configured portrait fallback instead of an unverified image."
+                    ],
+                )
+        else:
+            return ArtifactRecord(
+                **base_kwargs,
+                status=ArtifactStatus.FALLBACK,
+                approved=False,
+                source_description=(
+                    "Extracted dossier images are not automatically assigned "
+                    "to generic local assets."
+                ),
+                validation_warnings=[
+                    "No semantic match was verified for this local asset."
+                ],
+            )
+
         selected_path = Path(selected["path"]).expanduser().resolve()
         if not selected_path.exists() or not selected_path.is_file():
             return ArtifactRecord(
@@ -698,7 +941,12 @@ class ArtifactService:
         aliases = {
             "candidate_photo": ArtifactType.PORTRAIT,
             "candidate_portrait": ArtifactType.PORTRAIT,
-            "executive_portrait": ArtifactType.PORTRAIT,
+        "candidate_headshot": ArtifactType.PORTRAIT,
+        "executive_portrait": ArtifactType.PORTRAIT,
+        "portrait_asset": ArtifactType.PORTRAIT,
+        "portrait_image": ArtifactType.PORTRAIT,
+        "illustrated_portrait": ArtifactType.PORTRAIT,
+        "headshot": ArtifactType.PORTRAIT,
             "photo": ArtifactType.PORTRAIT,
             "company_logo": ArtifactType.LOGO,
             "logo_assets": ArtifactType.LOGO,

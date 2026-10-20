@@ -20,12 +20,20 @@ import {
 } from "./scenes/GenericScene";
 
 import {
+  ConfidentialityLabel,
+} from "./components/ConfidentialityLabel";
+
+import {
   generatedSceneRegistry,
 } from "./generated-current";
 
 import {
   defaultDynamicTheme,
 } from "./dynamic-sdk";
+
+import {
+  ensureTextContrast,
+} from "./theme/contrast";
 
 import type {
   GeneratedSceneProps,
@@ -67,20 +75,30 @@ const toDynamicTheme = (
       defaultDynamicTheme.surfaceSecondary,
 
     foreground:
-      theme.primary_colour ||
-      defaultDynamicTheme.foreground,
+      ensureTextContrast(
+        theme.primary_colour ||
+          defaultDynamicTheme.foreground,
+        "#FFFFFF",
+        7,
+      ),
 
     foregroundMuted:
-      theme.secondary_colour ||
-      defaultDynamicTheme.foregroundMuted,
+      ensureTextContrast(
+        theme.secondary_colour ||
+          defaultDynamicTheme.foregroundMuted,
+      ),
 
     accent:
-      theme.accent_colour ||
-      defaultDynamicTheme.accent,
+      ensureTextContrast(
+        theme.accent_colour ||
+          defaultDynamicTheme.accent,
+      ),
 
     accentSecondary:
-      theme.accent_secondary_colour ||
-      defaultDynamicTheme.accentSecondary,
+      ensureTextContrast(
+        theme.accent_secondary_colour ||
+          defaultDynamicTheme.accentSecondary,
+      ),
 
     border:
       defaultDynamicTheme.border,
@@ -421,9 +439,30 @@ React.FC<CandidateVideoProps> = (
               30,
           },
 
-          renderScene(
-            scene,
-            props,
+          React.createElement(
+            React.Fragment,
+            null,
+            renderScene(
+              scene,
+              props,
+            ),
+            renderSpec.theme.confidential &&
+            scene.start_frame + scene.duration_frames ===
+              renderSpec.video.duration_frames
+              ? React.createElement(
+                  ConfidentialityLabel,
+                  {
+                    text:
+                      renderSpec.theme.confidentiality_text ||
+                      "Private and Confidential",
+                    colour:
+                      ensureTextContrast(
+                        renderSpec.theme.secondary_colour ||
+                          "#334B5C",
+                      ),
+                  },
+                )
+              : null,
           ),
         ),
     );

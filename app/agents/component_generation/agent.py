@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from openai import OpenAI
+from openai.types.responses import ResponseInputParam
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -325,6 +326,7 @@ class ComponentGenerationAgent:
         scene_input,
         generated_component,
         validation,
+        visual_frames=None,
     ):
         payload = {
             "task":
@@ -346,6 +348,40 @@ class ComponentGenerationAgent:
                 ),
         }
 
+        repair_input: str | ResponseInputParam = json.dumps(
+            payload,
+            ensure_ascii=False,
+        )
+        if visual_frames:
+            content: list[dict[str, str]] = [
+                {
+                    "type": "input_text",
+                    "text": repair_input,
+                }
+            ]
+            for frame in visual_frames:
+                content.append(
+                    {
+                        "type": "input_text",
+                        "text": (
+                            f"Rendered preview frame: {frame['label']}, "
+                            f"frame {frame['frame']}."
+                        ),
+                    }
+                )
+                content.append(
+                    {
+                        "type": "input_image",
+                        "image_url": frame["image_url"],
+                    }
+                )
+            repair_input = [
+                {
+                    "role": "user",
+                    "content": content,
+                }
+            ]
+
         response = (
             self.client
             .responses
@@ -355,10 +391,7 @@ class ComponentGenerationAgent:
                 instructions=
                     self.repair_prompt,
 
-                input=json.dumps(
-                    payload,
-                    ensure_ascii=False,
-                ),
+                input=repair_input,
 
                 text_format=
                     GeneratedComponentOutput,

@@ -55,7 +55,11 @@ def repair_visual_components(run_directory, model=None):
 def main():
     parser = argparse.ArgumentParser(description="Repair components using visual-QA feedback.")
     parser.add_argument("--run-dir", required=True)
-    parser.add_argument("--model", default=None)
+    parser.add_argument(
+        "--model",
+        default=settings.openai_visual_repair_model,
+        help="Visual-repair model (defaults to OPENAI_VISUAL_REPAIR_MODEL).",
+    )
     args = parser.parse_args()
     report = repair_visual_components(args.run_dir, args.model)
     print(f"Visual repairs generated: {report['repaired_count']}")

@@ -11,6 +11,9 @@ import type {
   CandidateVideoProps,
 } from "./types";
 
+import {DSLVideo, getTotalDuration} from "./dsl";
+import {testVideoSpec} from "./dsl/testVideoSpec";
+
 /**
  * Default props exist only for Remotion Studio preview
  * and composition metadata calculation.
@@ -274,46 +277,88 @@ const calculateMetadata: CalculateMetadataFunction<
   };
 };
 
+const DSL_FPS = 30;
+
+const DSLTestVideo: React.FC = () => (
+  <DSLVideo videoSpec={testVideoSpec} fps={DSL_FPS} />
+);
+
+type DSLRenderProps = {
+  videoSpec: import("./dsl/types").VideoSpec;
+  artifacts?: import("./dynamic-sdk").ArtifactManifest;
+  sceneAudio?: Record<string, string>;
+};
+
+const DSLRenderVideo: React.FC<DSLRenderProps> = ({videoSpec, artifacts, sceneAudio}) => (
+  <DSLVideo videoSpec={videoSpec} fps={DSL_FPS} artifacts={artifacts} sceneAudio={sceneAudio} />
+);
+
+const calculateDSLMetadata: CalculateMetadataFunction<DSLRenderProps> = ({
+  props,
+}) => ({
+  durationInFrames: getTotalDuration(props.videoSpec, DSL_FPS),
+  fps: DSL_FPS,
+  width: 1920,
+  height: 1080,
+});
+
+const defaultDSLProps: DSLRenderProps = {
+  videoSpec: testVideoSpec,
+};
+
 export const RemotionRoot: React.FC =
   () => {
     return (
-      <Composition
-        id="CandidateVideo"
+      <>
+        <Composition
+          id="CandidateVideo"
 
-        component={
-          CandidateVideo
-        }
+          component={
+            CandidateVideo
+          }
 
-        /*
-         * These values are only initial
-         * composition defaults.
-         *
-         * calculateMetadata replaces them
-         * using the incoming render spec.
-         */
-        durationInFrames={
-          300
-        }
+          durationInFrames={
+            300
+          }
 
-        fps={
-          30
-        }
+          fps={
+            30
+          }
 
-        width={
-          1920
-        }
+          width={
+            1920
+          }
 
-        height={
-          1080
-        }
+          height={
+            1080
+          }
 
-        defaultProps={
-          defaultProps
-        }
+          defaultProps={
+            defaultProps
+          }
 
-        calculateMetadata={
-          calculateMetadata
-        }
-      />
+          calculateMetadata={
+            calculateMetadata
+          }
+        />
+        <Composition
+          id="DSLTest"
+          component={DSLTestVideo}
+          durationInFrames={getTotalDuration(testVideoSpec, DSL_FPS)}
+          fps={DSL_FPS}
+          width={1920}
+          height={1080}
+        />
+        <Composition
+          id="DSLRender"
+          component={DSLRenderVideo}
+          durationInFrames={getTotalDuration(testVideoSpec, DSL_FPS)}
+          fps={DSL_FPS}
+          width={1920}
+          height={1080}
+          defaultProps={defaultDSLProps}
+          calculateMetadata={calculateDSLMetadata}
+        />
+      </>
     );
   };
