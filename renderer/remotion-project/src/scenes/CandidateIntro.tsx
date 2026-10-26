@@ -1,6 +1,8 @@
 import React from "react";
 import {
+  Img,
   interpolate,
+  staticFile,
   useCurrentFrame,
 } from "remotion";
 
@@ -10,12 +12,34 @@ import {createTheme} from "../theme/theme";
 import type {
   RenderScene,
   ThemeSettings,
+  VisualElement,
 } from "../types";
 
 type CandidateIntroProps = {
   scene: RenderScene;
   theme: ThemeSettings;
   candidateName: string;
+};
+
+/**
+ * Return visible text from an approved visual element.
+ *
+ * Renderer metadata such as scene purpose is deliberately
+ * excluded from this function.
+ */
+const getText = (
+  element?: VisualElement,
+): string => {
+  if (!element) {
+    return "";
+  }
+
+  return (
+    element.content ||
+    element.value ||
+    element.label ||
+    ""
+  );
 };
 
 export const CandidateIntro: React.FC<
@@ -26,130 +50,405 @@ export const CandidateIntro: React.FC<
   candidateName,
 }) => {
   const frame = useCurrentFrame();
-  const colours = createTheme(theme);
+
+  const colours = createTheme(
+    theme,
+  );
 
   const visualElements =
     scene.props.visual_elements || [];
 
-  const titleElement = visualElements.find(
-    (item) =>
-      item.element_type === "subheading" ||
-      item.element_type === "label" ||
-      item.element_type === "body_text",
-  );
+  /*
+   * Viewer-facing content hierarchy:
+   *
+   * 1. scene.props.display
+   * 2. approved visual elements
+   * 3. candidateName
+   *
+   * scene.props.purpose is NEVER rendered.
+   */
 
-  const title =
-    titleElement?.content ||
-    titleElement?.label ||
-    scene.props.purpose ||
-    "";
+  const headingElement =
+    visualElements.find(
+      (item) =>
+        item.element_type ===
+        "heading",
+    );
 
-  const scale = interpolate(
-    frame,
-    [0, 28],
-    [0.96, 1],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    },
-  );
+  const subheadingElement =
+    visualElements.find(
+      (item) =>
+        item.element_type ===
+          "subheading" ||
+        item.element_type ===
+          "body_text",
+    );
 
-  const initials = candidateName
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0))
-    .join("")
-    .toUpperCase();
+  const labelElements =
+    visualElements.filter(
+      (item) =>
+        item.element_type ===
+        "label",
+    );
+
+  const display =
+    scene.props.display;
+
+  const eyebrow =
+    display?.eyebrow ||
+    "Executive Candidate Profile";
+
+  const headline =
+    display?.headline ||
+    getText(
+      headingElement,
+    ) ||
+    candidateName;
+
+  const supportingText =
+    display?.supporting_text ||
+    getText(
+      subheadingElement,
+    );
+
+  /*
+   * Optional short factual label such
+   * as location.
+   */
+  const secondaryLabel =
+    getText(
+      labelElements[0],
+    );
+
+  const approvedPortrait =
+    scene.props.artifacts?.find(
+      (artifact) =>
+        artifact.approved === true &&
+        artifact.artifact_type === "portrait" &&
+        Boolean(artifact.renderer_path),
+    );
+
+  const portraitPath =
+    approvedPortrait?.renderer_path;
+
+  /*
+   * Intro motion.
+   */
+
+  const entrance =
+    interpolate(
+      frame,
+      [0, 26],
+      [0, 1],
+      {
+        extrapolateLeft:
+          "clamp",
+        extrapolateRight:
+          "clamp",
+      },
+    );
+
+  const scale =
+    interpolate(
+      entrance,
+      [0, 1],
+      [0.965, 1],
+    );
+
+  const translateY =
+    interpolate(
+      entrance,
+      [0, 1],
+      [24, 0],
+    );
+
+  const textOpacity =
+    interpolate(
+      frame,
+      [4, 22],
+      [0, 1],
+      {
+        extrapolateLeft:
+          "clamp",
+        extrapolateRight:
+          "clamp",
+      },
+    );
+
+  const supportingOpacity =
+    interpolate(
+      frame,
+      [14, 32],
+      [0, 1],
+      {
+        extrapolateLeft:
+          "clamp",
+        extrapolateRight:
+          "clamp",
+      },
+    );
+
+  const initials =
+    candidateName
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(
+        (part) =>
+          part.charAt(0),
+      )
+      .join("")
+      .toUpperCase();
 
   return (
-    <SceneFrame
-      theme={theme}
-      sceneLabel="Profile"
-    >
+    <SceneFrame theme={theme}>
       <div
         style={{
-          position: "absolute",
+          position:
+            "absolute",
+
           left: 120,
           right: 120,
-          top: 180,
-          bottom: 140,
-          display: "flex",
-          alignItems: "center",
-          gap: 80,
-          transform: `scale(${scale})`,
+          top: 160,
+          bottom: 130,
+
+          display: "grid",
+
+          gridTemplateColumns:
+            "minmax(0, 1.45fr) minmax(360px, 0.65fr)",
+
+          alignItems:
+            "center",
+
+          gap: 64,
+
+          transform:
+            `translateY(${translateY}px) scale(${scale})`,
+
+          opacity:
+            entrance,
         }}
       >
         <div
           style={{
-            flex: 1,
+            minWidth: 0,
           }}
         >
           <div
             style={{
-              color: colours.accent,
-              fontSize: 22,
-              fontWeight: 720,
+              color:
+                colours.accent,
+
+              fontSize: 20,
+
+              fontWeight: 760,
+
               letterSpacing: 3,
-              textTransform: "uppercase",
-              marginBottom: 24,
+
+              textTransform:
+                "uppercase",
+
+              marginBottom: 28,
+
+              opacity:
+                textOpacity,
             }}
           >
-            Executive Candidate Profile
+            {eyebrow}
           </div>
 
           <h1
             style={{
               margin: 0,
-              color: colours.primary,
-              fontSize: 88,
-              lineHeight: 1,
-              letterSpacing: -3.5,
-              fontWeight: 740,
+
+              maxWidth: 1100,
+
+              color:
+                colours.primary,
+
+              fontFamily:
+                colours.displayFont,
+
+              fontSize: 82,
+
+              lineHeight: 1.02,
+
+              letterSpacing:
+                -3.2,
+
+              fontWeight: 760,
+
+              opacity:
+                textOpacity,
             }}
           >
-            {candidateName}
+            {headline}
           </h1>
 
-          {title ? (
+          {supportingText ? (
             <div
               style={{
                 marginTop: 28,
-                color: colours.secondary,
-                fontSize: 34,
-                lineHeight: 1.35,
-                maxWidth: 1050,
+
+                maxWidth: 1000,
+
+                color:
+                  colours.secondary,
+
+                fontSize: 33,
+
+                lineHeight: 1.32,
+
+                fontWeight: 500,
+
+                opacity:
+                  supportingOpacity,
               }}
             >
-              {title}
+              {supportingText}
+            </div>
+          ) : null}
+
+          {secondaryLabel ? (
+            <div
+              style={{
+                display:
+                  "inline-flex",
+
+                alignItems:
+                  "center",
+
+                marginTop: 30,
+
+                padding:
+                  "10px 16px",
+
+                borderRadius:
+                  999,
+
+                color:
+                  colours.primary,
+
+                background:
+                  "rgba(255,255,255,0.66)",
+
+                border:
+                  `1px solid ${colours.accent}`,
+
+                fontSize: 19,
+
+                fontWeight: 650,
+
+                letterSpacing:
+                  0.3,
+
+                opacity:
+                  supportingOpacity,
+              }}
+            >
+              {secondaryLabel}
             </div>
           ) : null}
         </div>
 
         <div
           style={{
-            width: 340,
-            height: 340,
+            position:
+              "relative",
+
+            width: portraitPath ? 430 : 350,
+            height: portraitPath ? 430 : 350,
+
+            justifySelf:
+              "end",
+
             flexShrink: 0,
-            borderRadius: "50%",
-            background: `
-              linear-gradient(
-                135deg,
-                ${colours.accent},
-                ${colours.primary}
-              )
-            `,
+
+            borderRadius:
+              "50%",
+
+            background: portraitPath
+              ? "#FFFFFF"
+              : `linear-gradient(145deg, ${colours.accent}, #315D78 54%, ${colours.primary})`,
+
             boxShadow:
               "0 28px 80px rgba(20,20,20,0.18)",
+
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#FFFFFF",
-            fontSize: 112,
+
+            alignItems:
+              "center",
+
+            justifyContent:
+              "center",
+
+            color:
+              "#FFFFFF",
+
+            fontSize: 108,
+
             fontWeight: 760,
+
+            letterSpacing: -4,
+
+            overflow:
+              "hidden",
           }}
         >
-          {initials}
+          {portraitPath ? (
+            <Img
+              src={staticFile(portraitPath)}
+              alt={approvedPortrait?.alt_text || `${candidateName} portrait`}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                borderRadius: "50%",
+              }}
+            />
+          ) : null}
+
+          <div
+            style={{
+              position:
+                "absolute",
+
+              inset: 18,
+
+              border:
+                "1px solid rgba(255,255,255,0.30)",
+
+              borderRadius:
+                "50%",
+            }}
+          />
+
+          {!portraitPath ? (
+            <div
+              style={{
+                position: "absolute",
+                width: 115,
+                height: 115,
+                right: -20,
+                top: 18,
+                borderRadius: "50%",
+                background: "rgba(255,255,255,0.10)",
+              }}
+            />
+          ) : null}
+
+          {!portraitPath ? (
+            <span
+              style={{
+                position: "relative",
+                zIndex: 2,
+              }}
+            >
+              {initials}
+            </span>
+          ) : null}
         </div>
       </div>
     </SceneFrame>

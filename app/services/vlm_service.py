@@ -230,6 +230,10 @@ class OpenAIVLMService:
         include_compensation=False,
         include_availability=True,
         video_mode="automatic",
+        target_duration_seconds=55.0,
+        max_duration_seconds=65.0,
+        max_storyboard_scenes=8,
+        max_voiceover_words=145,
     ):
         """Select sanitised dossier content for video generation."""
 
@@ -256,6 +260,10 @@ class OpenAIVLMService:
             "video_mode": video_mode,
             "include_compensation": bool(include_compensation),
             "include_availability": bool(include_availability),
+            "target_duration_seconds": float(target_duration_seconds),
+            "max_duration_seconds": float(max_duration_seconds),
+            "max_storyboard_scenes": int(max_storyboard_scenes),
+            "max_voiceover_words": int(max_voiceover_words),
         }
 
         request_manifest = {
@@ -355,6 +363,10 @@ class OpenAIVLMService:
         self,
         video_content,
         output_directory,
+        target_duration_seconds=55.0,
+        max_duration_seconds=65.0,
+        max_storyboard_scenes=8,
+        max_voiceover_words=145,
     ):
         """Generate a structured storyboard from approved content."""
 
@@ -387,6 +399,10 @@ class OpenAIVLMService:
             "recommended_duration_seconds": (
                 video_content.recommended_duration_seconds
             ),
+            "target_duration_seconds": float(target_duration_seconds),
+            "max_duration_seconds": float(max_duration_seconds),
+            "max_storyboard_scenes": int(max_storyboard_scenes),
+            "max_voiceover_words": int(max_voiceover_words),
         }
 
         save_json(
@@ -394,13 +410,22 @@ class OpenAIVLMService:
             output_path / "storyboard_request.json",
         )
 
+        duration_block = {
+            "target_duration_seconds": float(target_duration_seconds),
+            "hard_max_duration_seconds": float(max_duration_seconds),
+            "max_scene_count": int(max_storyboard_scenes),
+            "max_total_voiceover_words": int(max_voiceover_words),
+        }
         user_text = (
             "Create a video storyboard from the approved and "
             "sanitised content below.\n\n"
+            "HARD VIDEO BUDGET\n"
+            f"{json.dumps(duration_block, indent=2)}\n\n"
+            "The storyboard must fit the hard budget. Prefer fewer, stronger scenes "
+            "and omit lower-value material rather than compressing everything.\n\n"
             "APPROVED VIDEO CONTENT\n"
             f"{json.dumps(video_content.model_dump(mode='json'), ensure_ascii=False)}"
         )
-
         try:
             response = self._parse_response(
                 prompt=prompt,
@@ -448,6 +473,11 @@ class OpenAIVLMService:
         metadata["estimated_duration_seconds"] = (
             storyboard.estimated_total_duration_seconds
         )
+        metadata["voiceover_word_count"] = len(storyboard.complete_voiceover.split())
+        metadata["target_duration_seconds"] = float(target_duration_seconds)
+        metadata["max_duration_seconds"] = float(max_duration_seconds)
+        metadata["max_storyboard_scenes"] = int(max_storyboard_scenes)
+        metadata["max_voiceover_words"] = int(max_voiceover_words)
 
         save_json(
             metadata,

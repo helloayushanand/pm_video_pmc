@@ -1,7 +1,7 @@
 ﻿"""Tests for local pipeline utilities and state management."""
 
-from pathlib import Path
-
+import run_pipeline
+from app.pipeline.step_05d_generate_artifacts import build_argument_parser
 from app.utils.files import (
     calculate_sha256,
     copy_file,
@@ -9,9 +9,171 @@ from app.utils.files import (
 )
 from app.utils.json_utils import load_json, save_json
 from app.utils.run_manager import (
+    PIPELINE_STEPS,
     RunManager,
     create_run,
 )
+
+
+def test_pipeline_uses_the_dedicated_visual_repair_model(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_repair_visual_components(**kwargs):
+        captured.update(kwargs)
+        return {"repaired_count": 0}
+
+    monkeypatch.setattr(
+        run_pipeline,
+        "repair_visual_components",
+        fake_repair_visual_components,
+    )
+
+    arguments = run_pipeline.build_argument_parser().parse_args(
+        ["--input", "candidate.pdf"]
+    )
+    assert arguments.visual_repair_model == run_pipeline.settings.openai_visual_repair_model
+
+    arguments.visual_repair_model = "gpt-5.3-codex"
+    run_pipeline.execute_step(
+        "repair_visual_components",
+        tmp_path,
+        arguments,
+    )
+
+    assert captured["model"] == "gpt-5.3-codex"
+
+
+def test_standard_pipeline_generates_up_to_five_dynamic_scenes(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_generate_components(**kwargs):
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(
+        run_pipeline,
+        "generate_components",
+        fake_generate_components,
+    )
+    arguments = run_pipeline.build_argument_parser().parse_args(
+        ["--input", "candidate.pdf"]
+    )
+
+    run_pipeline.execute_step("generate_components", tmp_path, arguments)
+
+    assert captured["max_scenes"] == 5
+
+
+def test_dynamic_render_runs_after_static_master_render():
+    assert PIPELINE_STEPS.index("render_video") < PIPELINE_STEPS.index(
+        "render_dynamic_video"
+    )
+    assert PIPELINE_STEPS.index("render_dynamic_video") < PIPELINE_STEPS.index(
+        "final_dynamic_video_qa"
+    )
+
+
+def test_visual_repair_pass_revalidates_changed_sources_once(
+    monkeypatch, tmp_path
+):
+    preview_path = (
+        tmp_path / "05f_component_previews" / "preview_qa_report.json"
+    )
+    preview_path.parent.mkdir(parents=True)
+    save_json(
+        {"ready_for_phase_7": False, "results": [{"scene_id": "scene_01"}]},
+        preview_path,
+    )
+    calls = []
+    def fake_execute_step(step_name, run_directory, arguments):
+        calls.append(step_name)
+        if step_name == "repair_visual_components":
+            return {"repaired_count": 1}
+        if step_name == "preview_components":
+            ready = True
+            save_json(
+                {
+                    "ready_for_phase_7": ready,
+                    "results": [
+                        {
+                            "scene_id": "scene_01",
+                            "visual_approved": ready,
+                        }
+                    ],
+                },
+                preview_path,
+            )
+            return {"ready_for_phase_7": ready}
+        return {}
+
+    monkeypatch.setattr(run_pipeline, "execute_step", fake_execute_step)
+    arguments = run_pipeline.build_argument_parser().parse_args(
+        ["--run-dir", str(tmp_path)]
+    )
+
+    report = run_pipeline.run_visual_repair_pass(tmp_path, arguments)
+
+    assert report == {"repair_passes": 1, "ready_for_phase_7": True}
+    assert calls == [
+        "repair_visual_components",
+        "review_components",
+        "compile_components",
+        "repair_compiler_errors",
+        "preview_components",
+    ]
+
+
+def test_visual_repair_pass_stops_when_no_source_was_repaired(
+    monkeypatch, tmp_path
+):
+    preview_path = (
+        tmp_path / "05f_component_previews" / "preview_qa_report.json"
+    )
+    preview_path.parent.mkdir(parents=True)
+    save_json(
+        {"ready_for_phase_7": False, "results": [{"scene_id": "scene_01"}]},
+        preview_path,
+    )
+    calls = []
+
+    def fake_execute_step(step_name, run_directory, arguments):
+        calls.append(step_name)
+        return {
+            "repaired_count": 0,
+            "skipped": [
+                {
+                    "scene_id": "scene_01",
+                    "reason": "visual_repair_attempt_limit_reached",
+                }
+            ],
+            "failed": [],
+        }
+
+    monkeypatch.setattr(run_pipeline, "execute_step", fake_execute_step)
+    arguments = run_pipeline.build_argument_parser().parse_args(
+        ["--run-dir", str(tmp_path)]
+    )
+
+    try:
+        run_pipeline.run_visual_repair_pass(tmp_path, arguments)
+    except RuntimeError as error:
+        assert "visual_repair_attempt_limit_reached" in str(error)
+    else:
+        raise AssertionError("The repair loop should stop when no source changes.")
+
+    assert calls == ["repair_visual_components"]
+
+
+def test_artifact_cli_generates_images_by_default_and_can_skip():
+    parser = build_argument_parser()
+
+    defaults = parser.parse_args(["--run-dir", "run"])
+    skipped = parser.parse_args(
+        ["--run-dir", "run", "--skip-image-generation"]
+    )
+
+    assert defaults.generate_images is True
+    assert skipped.generate_images is False
 
 
 def test_save_and_load_json(tmp_path):
