@@ -31,6 +31,9 @@ const applyGlobal = (base: DynamicTheme, overrides?: ThemeOverrides): DynamicThe
 export const DSLVideo: React.FC<Props> = ({videoSpec, baseTheme, fps = 30, artifacts, sceneAudio}) => {
   const theme = applyGlobal(baseTheme ?? defaultDynamicTheme, videoSpec.globalTheme);
 
+  // "__global__" key plays a single audio track across the full video
+  const globalAudioSrc = sceneAudio?.["__global__"];
+
   let currentFrame = 0;
   const sequences = videoSpec.scenes.map((scene) => {
     const durationInFrames = Math.max(1, Math.round(scene.durationSeconds * fps));
@@ -58,7 +61,14 @@ export const DSLVideo: React.FC<Props> = ({videoSpec, baseTheme, fps = 30, artif
     );
   });
 
-  return React.createElement(AbsoluteFill, null, ...sequences);
+  return React.createElement(
+    AbsoluteFill,
+    null,
+    ...sequences,
+    globalAudioSrc
+      ? React.createElement(Audio, {src: staticFile(globalAudioSrc), volume: 1})
+      : null,
+  );
 };
 
 export const getTotalDuration = (videoSpec: VideoSpec, fps: number): number => {

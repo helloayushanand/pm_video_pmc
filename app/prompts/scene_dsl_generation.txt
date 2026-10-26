@@ -10,7 +10,7 @@ composing scenes from a catalog of visual elements and layout primitives.
 Return a VideoSpec object with:
 - candidate_name: the candidate's full name
 - confidentiality_text: "Private and Confidential"
-- scenes: 5–8 scenes, each 6–10 seconds, totaling 50–70 seconds
+- scenes: 5–8 scenes, each 8–13 seconds, totaling 65–85 seconds
 - artifacts: (optional) array of image generation specs for DALL-E
 
 # Scene structure
@@ -164,17 +164,39 @@ rather than fabricating content. Never invent facts not present in the dossier.
 - Do not include compensation data unless explicitly allowed (display_allowed: true)
 - Do not include development considerations or negative assessment content
 - Do not render confidentiality labels per scene — one closing label is sufficient
-- Do not exceed 8 scenes or 70 seconds total
+- Do not exceed 8 scenes or 85 seconds total
 - Every "image" or "portrait" element MUST reference an artifact_id that exists in
   the top-level artifacts array. Do not reference an artifact_id you did not define.
 - All narration must be natural spoken English — no bullet points or fragments
 
 # Narration
 
-Each scene needs a narration field with 1–3 sentences of natural speech that a
-text-to-speech engine will read aloud. The total narration across all scenes
-should take about 45–60 seconds when spoken at a natural pace (~150 words/minute).
-Write in third person, present tense. Be concise but not telegraphic.
+Each scene needs a narration field with 1–3 sentences of natural spoken English
+for a text-to-speech voiceover.
+
+**Critical rule: narration must COMPLEMENT the visual, not describe it.**
+The viewer can already see the slide. The narrator's job is to add what the
+slide cannot show: context, significance, implications, the "so what".
+
+Examples of what NOT to do (describing what is shown):
+- ❌ "Sarah Chen led three divisions and managed 450 people."
+- ❌ "Revenue grew from 1.2 to 4.8 million dollars."
+
+Examples of what TO do (complementing the visual):
+- ✓ "What makes Sarah's track record distinctive is that her growth happened
+    during the sector's most volatile years — a signal of adaptability, not
+    just execution."
+- ✓ "That four-times revenue multiple came without a single external funding
+    round — a rare combination of capital efficiency and commercial ambition."
+
+Guidelines:
+- Speak to implications and career story, not to the data points on screen
+- Use the visual as a launching pad to add depth, context, or narrative meaning
+- Write in third person, present tense
+- Total narration across all scenes: 55–75 seconds (~150–200 words total)
+- Each scene's narration: 1–3 sentences, roughly proportional to its duration
+- Vary sentence rhythm — mix a short punchy line with a longer explanatory one
+- Avoid starting consecutive scenes with the same word or phrase structure
 
 # Artifacts (image generation)
 
@@ -189,6 +211,19 @@ top-level "artifacts" array. Each artifact has:
   Default "landscape".
 
 Then reference the artifact_id in an "image" or "portrait" element in any scene.
+
+## Using an extracted headshot
+
+If `headshot_available: true` appears in the input data, the pipeline has already
+verified a real candidate photograph from the source document. In that case:
+
+- Add ONE artifact with `artifact_id: "candidate_portrait"`, `source: "extracted_headshot"`,
+  and `prompt: ""` (leave prompt empty — the photo is already on disk)
+- Use a `portrait` element in the intro/hero scene referencing `artifact_id: "candidate_portrait"`
+- Do NOT also generate a DALL-E portrait or headshot — `extracted_headshot` supersedes it
+
+If `headshot_available` is absent or false, do not add a portrait artifact unless you
+genuinely need one from DALL-E (use the `source: "generate"` default as normal).
 
 ## When to create artifacts
 

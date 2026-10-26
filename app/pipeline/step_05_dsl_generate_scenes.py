@@ -20,7 +20,7 @@ from app.utils.run_manager import RunManager
 STEP_NAME = "dsl_generate_scenes"
 
 
-def generate_scenes(run_directory: str | Path) -> dict:
+def generate_scenes(run_directory: str | Path, headshot_path: "Path | None" = None) -> dict:
     """Generate DSL scenes for a run that already has extracted video_content."""
 
     run_path = Path(run_directory).expanduser().resolve()
@@ -63,10 +63,12 @@ def generate_scenes(run_directory: str | Path) -> dict:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         service = SceneGenerationService()
+        headshot_available = headshot_path is not None and Path(headshot_path).exists()
         video_spec = service.generate_scenes(
             video_content=video_content,
             dossier=dossier,
             output_directory=output_dir,
+            headshot_available=headshot_available,
         )
 
         summary = {

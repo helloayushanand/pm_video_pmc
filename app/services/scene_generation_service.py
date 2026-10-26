@@ -35,6 +35,7 @@ class SceneGenerationService:
         video_content: dict,
         dossier: dict | None = None,
         output_directory: str | Path | None = None,
+        headshot_available: bool = False,
     ) -> VideoSpec:
         """Generate a validated VideoSpec via structured output.
 
@@ -57,6 +58,8 @@ class SceneGenerationService:
         payload: dict = {"video_content": video_content}
         if dossier:
             payload["dossier"] = dossier
+        if headshot_available:
+            payload["headshot_available"] = True
 
         logger.info("Generating DSL scenes using %s …", self.model)
 

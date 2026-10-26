@@ -92,6 +92,12 @@ class CostService:
         if transcription_call is not None:
             calls.append(transcription_call)
 
+        image_calls = self._read_image_calls(
+            run_path=run_path,
+            warnings=warnings,
+        )
+        calls.extend(image_calls)
+
         for call in calls:
             call["estimated_cost_usd"] = (
                 self._calculate_call_cost(
@@ -563,6 +569,62 @@ class CostService:
             "status": "completed",
         }
 
+    def _read_image_calls(
+        self,
+        run_path,
+        warnings,
+    ):
+        """Read image generation usage from artifact metadata."""
+        calls = []
+        for artifacts_dir in [
+            run_path / "05b_artifacts",
+            run_path / "05c_artifacts",
+        ]:
+            metadata_path = artifacts_dir / "image_metadata.json"
+            if not metadata_path.exists():
+                continue
+
+            metadata = load_json(metadata_path)
+            images_generated = self._int_or_zero(
+                metadata.get("images_generated")
+            )
+
+            calls.append({
+                "provider": "openai",
+                "operation": "image_generation",
+                "pipeline_step": "generate_artifacts",
+                "model": metadata.get("model"),
+                "billing_type": "images",
+                "images_requested": self._int_or_zero(
+                    metadata.get("images_requested")
+                ),
+                "images_generated": images_generated,
+                "quality": metadata.get("quality", "high"),
+                "metadata_file": str(metadata_path),
+                "status": "completed",
+            })
+
+        return calls
+
+    def _image_cost(
+        self,
+        call,
+        pricing,
+        warnings,
+    ):
+        rate = pricing.get("per_image_usd")
+        if rate is None:
+            warnings.append(
+                f"Image pricing is incomplete for "
+                f"{call.get('model')}"
+            )
+            return 0
+
+        images = self._int_or_zero(
+            call.get("images_generated")
+        )
+        return round(images * float(rate), 8)
+
     def _calculate_call_cost(
         self,
         call,
@@ -607,6 +669,13 @@ class CostService:
 
         if billing_type == "audio_minutes":
             return self._audio_minute_cost(
+                call=call,
+                pricing=model_pricing,
+                warnings=warnings,
+            )
+
+        if billing_type == "images":
+            return self._image_cost(
                 call=call,
                 pricing=model_pricing,
                 warnings=warnings,

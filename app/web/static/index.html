@@ -3,366 +3,669 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>PM Video Pipeline</title>
+<title>Video Pipeline</title>
+<script src="https://cdn.tailwindcss.com/3.4.1"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
-  :root {
-    --bg: #F5F4F1;
-    --surface: #FFFFFF;
-    --text: #111318;
-    --muted: #5F6872;
-    --accent: #B79A5B;
-    --accent-sec: #315D78;
-    --border: #E0DCD4;
-    --success: #16A34A;
-    --error: #DC2626;
-    --radius: 12px;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  .header {
-    width: 100%;
-    padding: 24px 32px;
-    background: linear-gradient(135deg, #0B1D2E 0%, #1A3A54 100%);
-    color: #F5F4F1;
-    text-align: center;
-  }
-  .header h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }
-  .header p { font-size: 14px; opacity: 0.7; margin-top: 4px; }
-  .container {
-    width: 100%;
-    max-width: 640px;
-    padding: 32px 16px;
-  }
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 32px;
-    margin-bottom: 24px;
-  }
-  .upload-zone {
-    border: 2px dashed var(--border);
-    border-radius: var(--radius);
-    padding: 48px 24px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-  }
-  .upload-zone:hover, .upload-zone.dragover {
-    border-color: var(--accent);
-    background: rgba(183, 154, 91, 0.04);
-  }
-  .upload-zone svg { width: 48px; height: 48px; color: var(--muted); margin-bottom: 12px; }
-  .upload-zone h3 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
-  .upload-zone p { font-size: 13px; color: var(--muted); }
-  .upload-zone input { display: none; }
-  .file-name {
-    margin-top: 12px;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--accent-sec);
-  }
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    width: 100%;
-    padding: 14px 24px;
-    border: none;
-    border-radius: var(--radius);
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
-  }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover:not(:disabled) { opacity: 0.9; }
-  .btn-download { background: var(--success); color: #fff; margin-top: 16px; }
-  .btn-download:hover { opacity: 0.9; }
-  .btn-reset { background: transparent; color: var(--muted); border: 1px solid var(--border); margin-top: 8px; }
-
-  .progress-section { display: none; }
-  .progress-section.active { display: block; }
-  .step-list { list-style: none; }
-  .step-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 14px;
-  }
-  .step-item:last-child { border-bottom: none; }
-  .step-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    flex-shrink: 0;
-  }
-  .step-icon.pending { background: var(--border); color: var(--muted); }
-  .step-icon.running { background: var(--accent); color: #fff; animation: pulse 1.5s infinite; }
-  .step-icon.done { background: var(--success); color: #fff; }
-  .step-icon.failed { background: var(--error); color: #fff; }
-  .step-name { flex: 1; }
-  .step-detail { font-size: 12px; color: var(--muted); }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-
-  .result-section { display: none; text-align: center; }
-  .result-section.active { display: block; }
-  .result-section .check-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    background: var(--success);
-    color: #fff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 32px;
-    margin-bottom: 16px;
-  }
-  .result-section h2 { font-size: 20px; margin-bottom: 4px; }
-  .result-section .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
-
-  .error-msg {
-    display: none;
-    margin-top: 16px;
-    padding: 12px 16px;
-    background: #FEF2F2;
-    border: 1px solid #FECACA;
-    border-radius: 8px;
-    color: var(--error);
-    font-size: 13px;
-  }
-  .error-msg.active { display: block; }
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pulse-dot { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+  .fade-in { animation: fadeIn .35s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  .audio-bar::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#6366f1; cursor:pointer; }
+  .audio-bar { -webkit-appearance:none; height:4px; border-radius:2px; background:#e2e8f0; outline:none; cursor:pointer; }
 </style>
 </head>
-<body>
+<body class="bg-slate-50 min-h-screen">
 
-<div class="header">
-  <h1>Candidate Video Pipeline</h1>
-  <p>Upload a dossier PDF and get a rendered video in minutes</p>
+<!-- ═══════════════════════════════════════════════════════ LOGIN SCREEN -->
+<div id="screen-login" class="min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm fade-in">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 mb-4">
+        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-slate-900">Video Pipeline</h1>
+      <p class="text-sm text-slate-500 mt-1">Sign in to continue</p>
+    </div>
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Username</label>
+          <input id="login-user" type="text" placeholder="Enter username"
+            class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Password</label>
+          <input id="login-pass" type="password" placeholder="Enter password"
+            class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"/>
+        </div>
+        <div id="login-error" class="hidden text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5"></div>
+        <button id="login-btn" onclick="doLogin()"
+          class="w-full h-11 rounded-xl bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700 transition flex items-center justify-center gap-2">
+          Sign in
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
-<div class="container">
+<!-- ═══════════════════════════════════════════════════════ APP SHELL -->
+<div id="screen-app" class="hidden min-h-screen flex flex-col">
 
-  <!-- Upload Card -->
-  <div class="card" id="upload-card">
-    <div class="upload-zone" id="drop-zone">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z"/>
-      </svg>
-      <h3>Drop your dossier PDF here</h3>
-      <p>or click to browse</p>
-      <input type="file" id="file-input" accept=".pdf"/>
-      <div class="file-name" id="file-name"></div>
+  <!-- Top nav -->
+  <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-10">
+    <div class="flex items-center gap-2.5">
+      <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <span class="font-semibold text-slate-900 text-sm">Video Pipeline</span>
     </div>
-    <button class="btn btn-primary" id="generate-btn" disabled style="margin-top:20px">
-      Generate Video
-    </button>
-    <div class="error-msg" id="upload-error"></div>
-  </div>
+    <div class="flex items-center gap-3">
+      <span id="nav-user" class="text-xs text-slate-500"></span>
+      <button onclick="doLogout()" class="text-xs text-slate-500 hover:text-slate-800 transition border border-slate-200 rounded-lg px-3 py-1.5">Sign out</button>
+    </div>
+  </header>
 
-  <!-- Progress Card -->
-  <div class="card progress-section" id="progress-card">
-    <h3 style="margin-bottom:16px;font-size:16px;">Pipeline Progress</h3>
-    <ul class="step-list" id="step-list">
-      <li class="step-item" data-step="prepare_document">
-        <div class="step-icon pending">1</div>
-        <span class="step-name">Prepare Document</span>
-        <span class="step-detail"></span>
-      </li>
-      <li class="step-item" data-step="extract_dossier">
-        <div class="step-icon pending">2</div>
-        <span class="step-name">Extract Dossier</span>
-        <span class="step-detail"></span>
-      </li>
-      <li class="step-item" data-step="select_video_content">
-        <div class="step-icon pending">3</div>
-        <span class="step-name">Select Video Content</span>
-        <span class="step-detail"></span>
-      </li>
-      <li class="step-item" data-step="generate_scenes">
-        <div class="step-icon pending">4</div>
-        <span class="step-name">Design Scenes (AI)</span>
-        <span class="step-detail"></span>
-      </li>
-      <li class="step-item" data-step="render_video">
-        <div class="step-icon pending">5</div>
-        <span class="step-name">Render Video</span>
-        <span class="step-detail"></span>
-      </li>
-    </ul>
-    <div class="error-msg" id="pipeline-error"></div>
-  </div>
+  <main class="flex-1 p-6 max-w-4xl mx-auto w-full">
 
-  <!-- Result Card -->
-  <div class="card result-section" id="result-card">
-    <div class="check-icon">&#10003;</div>
-    <h2 id="result-title">Video Ready</h2>
-    <p class="sub" id="result-sub"></p>
-    <button class="btn btn-download" id="download-btn">Download MP4</button>
-    <button class="btn btn-reset" id="reset-btn">Generate Another</button>
-  </div>
+    <!-- ─── UPLOAD VIEW ─── -->
+    <div id="view-upload" class="fade-in">
+      <div class="mb-6">
+        <h2 class="text-xl font-bold text-slate-900">Generate Video</h2>
+        <p class="text-sm text-slate-500 mt-1">Upload a dossier PDF and the AI pipeline will generate a video for you.</p>
+      </div>
 
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <!-- Drop zone -->
+        <div id="drop-zone"
+          onclick="document.getElementById('file-input').click()"
+          ondragover="event.preventDefault();this.classList.add('border-indigo-400','bg-indigo-50/50')"
+          ondragleave="this.classList.remove('border-indigo-400','bg-indigo-50/50')"
+          ondrop="handleDrop(event)"
+          class="border-2 border-dashed border-slate-200 rounded-xl p-12 text-center cursor-pointer transition hover:border-indigo-300 hover:bg-slate-50">
+          <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+          </svg>
+          <p class="text-sm font-medium text-slate-700">Drop your dossier PDF here</p>
+          <p class="text-xs text-slate-400 mt-1">or click to browse · PDF only · max 50 MB</p>
+          <input type="file" id="file-input" accept=".pdf" class="hidden" onchange="handleFileSelect(this.files[0])"/>
+        </div>
+
+        <!-- Selected file pill -->
+        <div id="file-pill" class="hidden mt-4 flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+          <svg class="w-5 h-5 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+          <div class="flex-1 min-w-0">
+            <p id="file-name" class="text-sm font-medium text-indigo-800 truncate"></p>
+            <p id="file-size" class="text-xs text-indigo-500"></p>
+          </div>
+          <button onclick="clearFile()" class="text-indigo-400 hover:text-indigo-600 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div id="upload-error" class="hidden mt-4 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3"></div>
+
+        <button id="generate-btn" onclick="startGeneration()" disabled
+          class="mt-5 w-full h-12 rounded-xl bg-indigo-600 text-sm font-semibold text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-indigo-700">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Generate Video
+        </button>
+      </div>
+    </div>
+
+    <!-- ─── PROGRESS VIEW ─── -->
+    <div id="view-progress" class="hidden fade-in">
+      <div class="mb-6 flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Processing Dossier</h2>
+          <p id="progress-filename" class="text-sm text-slate-500 mt-1"></p>
+        </div>
+        <div id="progress-status-badge" class="text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-100 text-amber-700">Running</div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100">
+          <h3 class="text-sm font-semibold text-slate-700">Pipeline Steps</h3>
+        </div>
+        <ul id="step-list" class="divide-y divide-slate-100">
+          <!-- Steps injected by JS -->
+        </ul>
+      </div>
+
+      <div id="pipeline-error" class="hidden mt-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3"></div>
+
+      <!-- Results panels (shown after done) -->
+      <div id="results-section" class="hidden mt-6 space-y-5 fade-in">
+
+        <!-- Artifacts -->
+        <div id="artifacts-panel" class="hidden">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
+              <svg class="w-4 h-4 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <h3 class="text-sm font-semibold text-slate-800">Generated Artifacts</h3>
+            <span id="artifacts-count" class="text-xs text-slate-400"></span>
+          </div>
+          <div id="artifacts-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+        </div>
+
+        <!-- Audio -->
+        <div id="audio-panel" class="hidden">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center">
+              <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+              </svg>
+            </div>
+            <h3 class="text-sm font-semibold text-slate-800">Generated Audio</h3>
+            <span id="audio-count" class="text-xs text-slate-400"></span>
+          </div>
+          <div id="audio-list" class="space-y-2"></div>
+        </div>
+
+        <!-- Video -->
+        <div id="video-panel" class="hidden">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center">
+              <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <h3 class="text-sm font-semibold text-slate-800">Final Video</h3>
+          </div>
+          <div class="bg-white rounded-2xl border border-indigo-100 p-5 flex items-center justify-between shadow-sm">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              </div>
+              <div>
+                <p id="video-name" class="text-sm font-semibold text-slate-800"></p>
+                <p id="video-size" class="text-xs text-slate-400 mt-0.5"></p>
+              </div>
+            </div>
+            <button id="video-download-btn"
+              class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Download MP4
+            </button>
+          </div>
+        </div>
+
+        <!-- Costs -->
+        <div id="costs-panel" class="hidden">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center">
+              <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <h3 class="text-sm font-semibold text-slate-800">API Spend</h3>
+            <span id="costs-total" class="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5"></span>
+          </div>
+          <div id="costs-breakdown" class="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100"></div>
+        </div>
+
+        <!-- New run button -->
+        <button onclick="resetToUpload()"
+          class="w-full h-11 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+          Generate Another Video
+        </button>
+      </div>
+    </div>
+
+  </main>
 </div>
 
 <script>
-const dropZone = document.getElementById('drop-zone');
-const fileInput = document.getElementById('file-input');
-const fileNameEl = document.getElementById('file-name');
-const generateBtn = document.getElementById('generate-btn');
-const uploadCard = document.getElementById('upload-card');
-const progressCard = document.getElementById('progress-card');
-const resultCard = document.getElementById('result-card');
-const uploadError = document.getElementById('upload-error');
-const pipelineError = document.getElementById('pipeline-error');
-
+// ─── State ───────────────────────────────────────────────────────────────────
+let AUTH_TOKEN = localStorage.getItem('vp_token') || null;
+let AUTH_USER  = localStorage.getItem('vp_user')  || null;
 let selectedFile = null;
-let currentJobId = null;
+let currentJobId  = null;
 
-dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dropZone.classList.remove('dragover');
-  const f = e.dataTransfer.files[0];
-  if (f && f.name.toLowerCase().endsWith('.pdf')) selectFile(f);
-});
-fileInput.addEventListener('change', () => {
-  if (fileInput.files[0]) selectFile(fileInput.files[0]);
-});
+const STEPS_META = {
+  prepare_document:    { label: 'Prepare Document',       icon: '📄', num: 1 },
+  extract_dossier:     { label: 'Extract Dossier (AI)',   icon: '🧠', num: 2 },
+  validate_extraction: { label: 'Validate Extraction',    icon: '✅', num: 3 },
+  select_video_content:{ label: 'Select Video Content',   icon: '🎬', num: 4 },
+  generate_scenes:     { label: 'Design Scenes (AI)',     icon: '🎨', num: 5 },
+  generate_artifacts:  { label: 'Generate Images (AI)',   icon: '🖼️', num: 6 },
+  generate_audio:      { label: 'Generate Voiceover',     icon: '🎙️', num: 7 },
+  render_video:        { label: 'Render Video',           icon: '🖥️', num: 8 },
+};
 
-function selectFile(f) {
-  selectedFile = f;
-  fileNameEl.textContent = f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)';
-  generateBtn.disabled = false;
-  uploadError.classList.remove('active');
-}
-
-generateBtn.addEventListener('click', async () => {
-  if (!selectedFile) return;
-  generateBtn.disabled = true;
-  uploadError.classList.remove('active');
-
-  const form = new FormData();
-  form.append('file', selectedFile);
-
-  try {
-    const res = await fetch('/api/upload', { method: 'POST', body: form });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Upload failed');
-    }
-    const { job_id } = await res.json();
-    currentJobId = job_id;
-    uploadCard.style.display = 'none';
-    progressCard.classList.add('active');
-    listenForUpdates(job_id);
-  } catch (e) {
-    uploadError.textContent = e.message;
-    uploadError.classList.add('active');
-    generateBtn.disabled = false;
+// ─── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (AUTH_TOKEN) {
+    showApp();
+  } else {
+    show('screen-login');
+    document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   }
 });
 
-function listenForUpdates(jobId) {
-  const es = new EventSource('/api/status/' + jobId);
+// ─── Screen helpers ───────────────────────────────────────────────────────────
+function show(id) {
+  ['screen-login','screen-app'].forEach(s => document.getElementById(s).classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+function showView(id) {
+  ['view-upload','view-progress'].forEach(v => document.getElementById(v).classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+function showApp() {
+  show('screen-app');
+  document.getElementById('nav-user').textContent = AUTH_USER || '';
+  showView('view-upload');
+}
 
-  es.addEventListener('step', (e) => {
-    const data = JSON.parse(e.data);
-    updateStep(data.step, data.status, data.detail);
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('login-error');
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  err.classList.add('hidden');
+  btn.disabled = true;
+  btn.innerHTML = '<svg class="w-4 h-4 spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Signing in…';
+  try {
+    const res = await api('/api/login', 'POST', { username: user, password: pass }, false);
+    AUTH_TOKEN = res.token;
+    AUTH_USER  = res.username;
+    localStorage.setItem('vp_token', AUTH_TOKEN);
+    localStorage.setItem('vp_user',  AUTH_USER);
+    showApp();
+  } catch (e) {
+    err.textContent = e.message || 'Invalid credentials';
+    err.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
+}
+
+async function doLogout() {
+  try { await api('/api/logout', 'POST', null); } catch {}
+  AUTH_TOKEN = null; AUTH_USER = null;
+  localStorage.removeItem('vp_token'); localStorage.removeItem('vp_user');
+  show('screen-login');
+}
+
+// ─── File handling ────────────────────────────────────────────────────────────
+function handleFileSelect(f) {
+  if (!f || !f.name.toLowerCase().endsWith('.pdf')) return;
+  selectedFile = f;
+  document.getElementById('file-name').textContent = f.name;
+  document.getElementById('file-size').textContent = (f.size / 1048576).toFixed(1) + ' MB';
+  document.getElementById('file-pill').classList.remove('hidden');
+  document.getElementById('generate-btn').disabled = false;
+  document.getElementById('upload-error').classList.add('hidden');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('border-indigo-400','bg-indigo-50/50');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.toLowerCase().endsWith('.pdf')) handleFileSelect(f);
+}
+function clearFile() {
+  selectedFile = null;
+  document.getElementById('file-pill').classList.add('hidden');
+  document.getElementById('generate-btn').disabled = true;
+  document.getElementById('file-input').value = '';
+}
+
+// ─── Generation ───────────────────────────────────────────────────────────────
+async function startGeneration() {
+  if (!selectedFile) return;
+  const err = document.getElementById('upload-error');
+  err.classList.add('hidden');
+  document.getElementById('generate-btn').disabled = true;
+
+  const form = new FormData();
+  form.append('file', selectedFile);
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN },
+      body: form,
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || 'Upload failed');
+    }
+    const { job_id } = await res.json();
+    currentJobId = job_id;
+    showProgressView();
+    listenForUpdates(job_id);
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+    document.getElementById('generate-btn').disabled = false;
+  }
+}
+
+// ─── Progress view ────────────────────────────────────────────────────────────
+function showProgressView() {
+  showView('view-progress');
+  document.getElementById('progress-filename').textContent = selectedFile?.name || '';
+  document.getElementById('results-section').classList.add('hidden');
+  document.getElementById('pipeline-error').classList.add('hidden');
+  document.getElementById('progress-status-badge').className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-100 text-amber-700';
+  document.getElementById('progress-status-badge').textContent = 'Running';
+
+  const list = document.getElementById('step-list');
+  list.innerHTML = Object.entries(STEPS_META).map(([key, m]) => `
+    <li id="step-${key}" class="flex items-center gap-4 px-6 py-4">
+      <div class="step-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-slate-100 text-slate-400 shrink-0">${m.num}</div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-slate-700">${m.label}</p>
+        <p class="step-detail text-xs text-slate-400 mt-0.5 truncate"></p>
+      </div>
+      <span class="step-timer text-xs text-slate-400 font-mono shrink-0 w-12 text-right"></span>
+      <div class="step-badge"></div>
+    </li>
+  `).join('');
+}
+
+function fmtDuration(ms) {
+  if (!ms) return '';
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms/1000).toFixed(1)}s`;
+  const m = Math.floor(ms/60000), s = Math.round((ms%60000)/1000);
+  return `${m}m ${s}s`;
+}
+
+function updateStep(name, status, detail, duration_ms) {
+  const li = document.getElementById('step-' + name);
+  if (!li) return;
+  const icon = li.querySelector('.step-icon');
+  const det  = li.querySelector('.step-detail');
+  const badge = li.querySelector('.step-badge');
+  const timer = li.querySelector('.step-timer');
+  if (detail) det.textContent = detail;
+
+  if (status === 'running') {
+    icon.className = 'step-icon w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-amber-100';
+    icon.innerHTML = '<svg class="w-4 h-4 text-amber-600 spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>';
+    badge.innerHTML = '<span class="text-xs text-amber-600 font-medium">Running</span>';
+    if (timer) { timer.textContent = ''; li._startTs = Date.now(); startLiveTimer(name); }
+  } else if (status === 'done') {
+    stopLiveTimer(name);
+    icon.className = 'step-icon w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-emerald-100';
+    icon.innerHTML = '<svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+    badge.innerHTML = '<span class="text-xs text-emerald-600 font-medium">Done</span>';
+    if (timer) timer.textContent = fmtDuration(duration_ms);
+  } else if (status === 'failed') {
+    stopLiveTimer(name);
+    icon.className = 'step-icon w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-rose-100';
+    icon.innerHTML = '<svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+    badge.innerHTML = '<span class="text-xs text-rose-600 font-medium">Failed</span>';
+    if (timer) timer.textContent = fmtDuration(duration_ms);
+  }
+}
+
+const _liveTimers = {};
+function startLiveTimer(name) {
+  stopLiveTimer(name);
+  _liveTimers[name] = setInterval(() => {
+    const li = document.getElementById('step-' + name);
+    if (!li) return;
+    const timer = li.querySelector('.step-timer');
+    if (timer && li._startTs) timer.textContent = fmtDuration(Date.now() - li._startTs);
+  }, 500);
+}
+function stopLiveTimer(name) {
+  if (_liveTimers[name]) { clearInterval(_liveTimers[name]); delete _liveTimers[name]; }
+}
+
+async function listenForUpdates(jobId) {
+  const es = new EventSource(`/api/status/${jobId}?token=${AUTH_TOKEN}`);
+  es.addEventListener('step', e => {
+    const d = JSON.parse(e.data);
+    updateStep(d.step, d.status, d.detail, d.duration_ms);
   });
-
-  es.addEventListener('complete', (e) => {
+  es.addEventListener('complete', async e => {
     es.close();
-    const data = JSON.parse(e.data);
-    if (data.status === 'done') {
-      progressCard.classList.remove('active');
-      resultCard.classList.add('active');
-      document.getElementById('result-sub').textContent = 'Your video is ready to download.';
-      document.getElementById('download-btn').onclick = () => {
-        window.location.href = '/api/download/' + jobId;
-      };
+    const d = JSON.parse(e.data);
+    if (d.status === 'done') {
+      const badge = document.getElementById('progress-status-badge');
+      badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700';
+      badge.textContent = 'Complete';
+      await loadResults(jobId);
     } else {
-      pipelineError.textContent = data.error || 'Pipeline failed.';
-      pipelineError.classList.add('active');
+      const badge = document.getElementById('progress-status-badge');
+      badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-rose-100 text-rose-700';
+      badge.textContent = 'Failed';
+      document.getElementById('pipeline-error').textContent = d.error || 'Pipeline failed.';
+      document.getElementById('pipeline-error').classList.remove('hidden');
     }
   });
-
-  es.onerror = () => {
-    es.close();
-    // Fall back to polling
-    pollStatus(jobId);
-  };
+  es.onerror = () => { es.close(); pollStatus(jobId); };
 }
 
 async function pollStatus(jobId) {
   try {
-    const res = await fetch('/api/status/' + jobId + '/poll');
-    const data = await res.json();
-    for (const step of (data.steps || [])) {
-      updateStep(step.step, step.status, step.detail);
-    }
+    const data = await api(`/api/status/${jobId}/poll`, 'GET', null);
+    for (const step of (data.steps || [])) updateStep(step.step, step.status, step.detail, step.duration_ms);
     if (data.status === 'done') {
-      progressCard.classList.remove('active');
-      resultCard.classList.add('active');
-      document.getElementById('download-btn').onclick = () => {
-        window.location.href = '/api/download/' + jobId;
-      };
+      document.getElementById('progress-status-badge').className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700';
+      document.getElementById('progress-status-badge').textContent = 'Complete';
+      await loadResults(jobId);
     } else if (data.status === 'failed') {
-      pipelineError.textContent = data.error || 'Pipeline failed.';
-      pipelineError.classList.add('active');
+      document.getElementById('pipeline-error').textContent = data.error || 'Pipeline failed.';
+      document.getElementById('pipeline-error').classList.remove('hidden');
     } else {
-      setTimeout(() => pollStatus(jobId), 2000);
+      setTimeout(() => pollStatus(jobId), 2500);
     }
   } catch { setTimeout(() => pollStatus(jobId), 3000); }
 }
 
-function updateStep(stepName, status, detail) {
-  const item = document.querySelector(`[data-step="${stepName}"]`);
-  if (!item) return;
-  const icon = item.querySelector('.step-icon');
-  const detailEl = item.querySelector('.step-detail');
+// ─── Results ──────────────────────────────────────────────────────────────────
+async function loadResults(jobId) {
+  try {
+    const files = await api(`/api/files/${jobId}`, 'GET', null);
 
-  icon.className = 'step-icon ' + status;
-  if (status === 'done') icon.innerHTML = '&#10003;';
-  else if (status === 'failed') icon.innerHTML = '&#10007;';
-  else if (status === 'running') icon.innerHTML = '&#9679;';
+    // Artifacts
+    if (files.artifacts && files.artifacts.length) {
+      const grid = document.getElementById('artifacts-grid');
+      grid.innerHTML = files.artifacts.map(a => `
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden group relative">
+          <img src="/api/download/${jobId}/artifact/${encodeURIComponent(a.name)}?token=${AUTH_TOKEN}"
+               class="w-full h-36 object-cover bg-slate-100"
+               onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23f1f5f9%22 width=%22100%22 height=%22100%22/><text y=%2250%25%22 x=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2212%22 fill=%22%2394a3b8%22>Image</text></svg>'"/>
+          <div class="p-2.5">
+            <p class="text-xs font-medium text-slate-700 truncate">${a.name.replace(/_/g,' ').replace('.png','')}</p>
+            <p class="text-xs text-slate-400 mt-0.5">${a.size_kb} KB</p>
+          </div>
+          <a href="/api/download/${jobId}/artifact/${encodeURIComponent(a.name)}?token=${AUTH_TOKEN}"
+             download="${a.name}"
+             class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl">
+            <span class="bg-white text-slate-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Download
+            </span>
+          </a>
+        </div>
+      `).join('');
+      document.getElementById('artifacts-count').textContent = `${files.artifacts.length} file${files.artifacts.length > 1 ? 's' : ''}`;
+      document.getElementById('artifacts-panel').classList.remove('hidden');
+    }
 
-  if (detail) detailEl.textContent = detail;
+    // Audio
+    if ((files.audio && files.audio.length) || files.transcript) {
+      const list = document.getElementById('audio-list');
+      const mp3s = (files.audio || []);
+      list.innerHTML = mp3s.map((a, i) => `
+        <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center gap-3">
+          <button onclick="toggleAudio(${i})" id="play-btn-${i}"
+            class="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 hover:bg-emerald-200 transition">
+            <svg id="play-icon-${i}" class="w-4 h-4 text-emerald-700" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </button>
+          <audio id="audio-${i}" src="/api/download/${jobId}/audio/${encodeURIComponent(a.name)}?token=${AUTH_TOKEN}"
+            onended="resetAudioBtn(${i})"
+            onplay="setPlayingBtn(${i})"
+            onpause="setPausedBtn(${i})"></audio>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-slate-700 truncate">${a.name.replace(/_/g,' ').replace('.mp3','')}</p>
+            <p class="text-xs text-slate-400 mt-0.5">${a.size_kb} KB · MP3</p>
+          </div>
+          <a href="/api/download/${jobId}/audio/${encodeURIComponent(a.name)}?token=${AUTH_TOKEN}" download="${a.name}"
+            class="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          </a>
+        </div>
+      `).join('');
+
+      if (files.transcript) {
+        list.innerHTML += `
+        <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-slate-700">Voiceover Transcript</p>
+            <p class="text-xs text-slate-400 mt-0.5">${files.transcript.size_kb} KB · TXT</p>
+          </div>
+          <a href="/api/download/${jobId}/transcript?token=${AUTH_TOKEN}" download="voiceover_transcript.txt"
+            class="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          </a>
+        </div>`;
+      }
+
+      const trackCount = mp3s.length + (files.transcript ? 1 : 0);
+      document.getElementById('audio-count').textContent = `${trackCount} file${trackCount > 1 ? 's' : ''}`;
+      document.getElementById('audio-panel').classList.remove('hidden');
+    }
+
+    // Video
+    if (files.video) {
+      document.getElementById('video-name').textContent = files.video.name;
+      document.getElementById('video-size').textContent = `${files.video.size_mb} MB · MP4`;
+      document.getElementById('video-download-btn').onclick = () => {
+        window.location.href = `/api/download/${jobId}/video?token=${AUTH_TOKEN}`;
+      };
+      document.getElementById('video-panel').classList.remove('hidden');
+    }
+
+    // Costs
+    try {
+      const costs = await api(`/api/costs/${jobId}`, 'GET', null);
+      if (costs && !costs.error) {
+        const total = costs.direct_api_cost_usd || 0;
+        document.getElementById('costs-total').textContent = `$${total.toFixed(4)} API`;
+        const ops = costs.cost_by_operation || {};
+        const calls = costs.calls || [];
+        const breakdown = document.getElementById('costs-breakdown');
+        breakdown.innerHTML = calls.map(c => {
+          const cost = c.estimated_cost_usd || 0;
+          const detail = c.billing_type === 'tokens'
+            ? `${(c.input_tokens||0).toLocaleString()} in · ${(c.output_tokens||0).toLocaleString()} out tokens`
+            : c.billing_type === 'characters'
+            ? `${(c.character_count||0).toLocaleString()} chars`
+            : `${((c.audio_duration_seconds||0)/60).toFixed(2)} min audio`;
+          return `<div class="px-4 py-3 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-slate-700">${c.operation.replace(/_/g,' ')}</p>
+              <p class="text-xs text-slate-400 mt-0.5">${c.model || ''} · ${detail}</p>
+            </div>
+            <span class="text-sm font-semibold text-slate-700 shrink-0">$${cost.toFixed(5)}</span>
+          </div>`;
+        }).join('');
+        if (costs.total_technical_cost_usd > 0) {
+          breakdown.innerHTML += `<div class="px-4 py-3 flex items-center justify-between border-t border-slate-200 bg-slate-50 rounded-b-2xl">
+            <p class="text-sm font-semibold text-slate-700">Total (incl. render &amp; storage)</p>
+            <span class="text-sm font-bold text-slate-900">$${(costs.total_technical_cost_usd||0).toFixed(5)}</span>
+          </div>`;
+        }
+        document.getElementById('costs-panel').classList.remove('hidden');
+      }
+    } catch (e) {
+      console.warn('costs not available:', e.message);
+    }
+
+    document.getElementById('results-section').classList.remove('hidden');
+  } catch (e) {
+    console.error('loadResults error', e);
+  }
 }
 
-document.getElementById('reset-btn').addEventListener('click', () => {
-  resultCard.classList.remove('active');
-  uploadCard.style.display = 'block';
-  selectedFile = null;
-  fileNameEl.textContent = '';
-  fileInput.value = '';
-  generateBtn.disabled = true;
-  pipelineError.classList.remove('active');
-  // Reset all steps
-  document.querySelectorAll('.step-icon').forEach((el, i) => {
-    el.className = 'step-icon pending';
-    el.innerHTML = String(i + 1);
+// ─── Audio player helpers ─────────────────────────────────────────────────────
+let currentlyPlaying = null;
+function toggleAudio(i) {
+  const audio = document.getElementById('audio-' + i);
+  if (!audio) return;
+  if (currentlyPlaying !== null && currentlyPlaying !== i) {
+    const prev = document.getElementById('audio-' + currentlyPlaying);
+    if (prev) prev.pause();
+  }
+  if (audio.paused) { audio.play(); currentlyPlaying = i; }
+  else { audio.pause(); currentlyPlaying = null; }
+}
+function setPlayingBtn(i) {
+  const icon = document.getElementById('play-icon-' + i);
+  if (icon) icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+}
+function setPausedBtn(i) {
+  const icon = document.getElementById('play-icon-' + i);
+  if (icon) icon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+}
+function resetAudioBtn(i) { setPausedBtn(i); currentlyPlaying = null; }
+
+// ─── Reset ────────────────────────────────────────────────────────────────────
+function resetToUpload() {
+  currentJobId = null; selectedFile = null;
+  document.getElementById('file-pill').classList.add('hidden');
+  document.getElementById('generate-btn').disabled = true;
+  document.getElementById('file-input').value = '';
+  document.getElementById('upload-error').classList.add('hidden');
+  document.getElementById('artifacts-panel').classList.add('hidden');
+  document.getElementById('audio-panel').classList.add('hidden');
+  document.getElementById('video-panel').classList.add('hidden');
+  document.getElementById('costs-panel').classList.add('hidden');
+  showView('view-upload');
+}
+
+// ─── API helper ───────────────────────────────────────────────────────────────
+async function api(path, method, body, useAuth = true) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (useAuth && AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
+  const res = await fetch(path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
   });
-  document.querySelectorAll('.step-detail').forEach(el => el.textContent = '');
-});
+  if (res.status === 401) { doLogout(); throw new Error('Session expired'); }
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
 </script>
 </body>
 </html>

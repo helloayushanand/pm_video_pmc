@@ -256,8 +256,12 @@ class SceneSpec(StrictBase):
 
 class ArtifactSpec(StrictBase):
     artifact_id: str = Field(description="Unique ID referenced by image elements in scenes")
-    prompt: str = Field(description="Detailed description for image generation")
+    prompt: str = Field(default="", description="Detailed description for DALL-E generation; empty when source is 'extracted_headshot'")
     orientation: Literal["landscape", "square", "portrait"] = "landscape"
+    source: Literal["generate", "extracted_headshot"] = Field(
+        default="generate",
+        description="'generate' = call DALL-E; 'extracted_headshot' = use photo extracted from the source document",
+    )
 
 
 # ── Video spec (full output from LLM) ────────────────────────────────
