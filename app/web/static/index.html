@@ -3,207 +3,287 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Video Pipeline</title>
+<title>Positive Moves — Candidate Video</title>
 <script src="https://cdn.tailwindcss.com/3.4.1"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garant:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
-  body { font-family: 'Inter', system-ui, sans-serif; }
-  .spin { animation: spin 1s linear infinite; }
+  :root {
+    --orange:  #E05C1C;
+    --orange2: #C94F15;
+    --dark:    #1E1C1B;
+    --dark2:   #2A2724;
+    --cream:   #F3F0EE;
+    --cream2:  #EAE7E4;
+    --white:   #FFFFFF;
+    --fg:      #111111;
+    --muted:   #666666;
+    --border:  #DEDBD8;
+  }
+
+  * { box-sizing: border-box; }
+  body { font-family: 'DM Sans', system-ui, sans-serif; background: var(--cream); margin: 0; }
+  .font-display { font-family: 'Cormorant Garant', Georgia, serif; }
+
+  /* Animations */
+  .spin  { animation: spin .9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .pulse-dot { animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
   .fade-in { animation: fadeIn .35s ease; }
   @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-  .audio-bar::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#6366f1; cursor:pointer; }
-  .audio-bar { -webkit-appearance:none; height:4px; border-radius:2px; background:#e2e8f0; outline:none; cursor:pointer; }
+
+  /* Login page dark background */
+  .login-bg {
+    background: var(--dark);
+    background-image: radial-gradient(ellipse 55% 45% at 20% 80%, rgba(224,92,28,.14) 0%, transparent 65%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  /* PM wordmark bars in orange */
+  .pm-mark { color: var(--orange); }
+
+  /* Input focus */
+  input:focus {
+    outline: none;
+    border-color: var(--orange) !important;
+    box-shadow: 0 0 0 3px rgba(224,92,28,.15) !important;
+  }
+
+  /* Drop zone active */
+  .drop-active { border-color: var(--orange) !important; background: rgba(224,92,28,.04) !important; }
+
+  /* Step list rows */
+  #step-list li { border-bottom: 1px solid var(--border); transition: background .12s; }
+  #step-list li:last-child { border-bottom: none; }
+  #step-list li:hover { background: var(--cream); }
+
+  /* Card shadow */
+  .card  { box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.07); }
+  .card-lg { box-shadow: 0 2px 8px rgba(0,0,0,.1), 0 16px 40px rgba(0,0,0,.14); }
+
+  /* Uppercase label */
+  .label-caps { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+
+  /* Button states */
+  .btn-primary { background: var(--orange); color: #fff; transition: background .15s; }
+  .btn-primary:hover:not(:disabled) { background: var(--orange2); }
+  .btn-primary:disabled { opacity: .3; cursor: not-allowed; }
+
+  .btn-dark { background: var(--dark); color: #fff; transition: background .15s; }
+  .btn-dark:hover { background: var(--dark2); }
+
+  .btn-outline-dark {
+    background: transparent;
+    color: rgba(255,255,255,.55);
+    border: 1px solid rgba(255,255,255,.15);
+    transition: color .15s, background .15s;
+  }
+  .btn-outline-dark:hover { color: #fff; background: rgba(255,255,255,.07); }
+
+  .btn-ghost {
+    background: var(--white);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    transition: background .15s;
+  }
+  .btn-ghost:hover { background: var(--cream2); }
+
+  /* Artifact cards */
+  .artifact-card { transition: box-shadow .15s; }
+  .artifact-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.12); }
 </style>
 </head>
-<body class="bg-slate-50 min-h-screen">
+<body>
 
-<!-- ═══════════════════════════════════════════════════════ LOGIN SCREEN -->
-<div id="screen-login" class="min-h-screen flex items-center justify-center p-4">
-  <div class="w-full max-w-sm fade-in">
-    <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 mb-4">
-        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-        </svg>
+<!-- ═══════════════════════════════ LOGIN SCREEN ══════════════════════════════ -->
+<div id="screen-login" class="login-bg">
+  <div style="width:100%; max-width:380px" class="fade-in">
+
+    <!-- Brand -->
+    <div style="text-align:center; margin-bottom:36px">
+      <!-- Logo-style wordmark -->
+      <div style="display:inline-block; margin-bottom:20px">
+        <div style="font-family:'DM Sans',sans-serif; font-size:22px; font-weight:600; letter-spacing:.04em; line-height:1.1; color:#fff">
+          <span class="pm-mark">POSITI</span><span style="color:#fff">V</span><span class="pm-mark">E</span><br>
+          <span class="pm-mark">MO</span><span style="color:#fff">V</span><span class="pm-mark">ES</span>
+        </div>
       </div>
-      <h1 class="text-2xl font-bold text-slate-900">Video Pipeline</h1>
-      <p class="text-sm text-slate-500 mt-1">Sign in to continue</p>
+      <p class="label-caps" style="color:rgba(255,255,255,.35); margin:0">Candidate Video · Internal</p>
     </div>
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-      <div class="space-y-4">
+
+    <!-- Card -->
+    <div class="card-lg" style="background:var(--white); border-radius:4px; padding:32px; border:1px solid rgba(0,0,0,.06)">
+      <p class="label-caps" style="color:var(--orange); margin:0 0 24px">Sign in to continue</p>
+
+      <div style="display:flex; flex-direction:column; gap:16px">
         <div>
-          <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Username</label>
-          <input id="login-user" type="text" placeholder="Enter username"
-            class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"/>
+          <label class="label-caps" style="color:var(--muted); display:block; margin-bottom:6px">Username</label>
+          <input id="login-user" type="text" placeholder="Enter username" autocomplete="username"
+            style="width:100%; padding:10px 14px; border:1px solid var(--border); border-radius:2px; font-size:14px; font-family:inherit; color:var(--fg); background:var(--cream)"/>
         </div>
         <div>
-          <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Password</label>
-          <input id="login-pass" type="password" placeholder="Enter password"
-            class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"/>
+          <label class="label-caps" style="color:var(--muted); display:block; margin-bottom:6px">Password</label>
+          <input id="login-pass" type="password" placeholder="Enter password" autocomplete="current-password"
+            style="width:100%; padding:10px 14px; border:1px solid var(--border); border-radius:2px; font-size:14px; font-family:inherit; color:var(--fg); background:var(--cream)"/>
         </div>
-        <div id="login-error" class="hidden text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5"></div>
-        <button id="login-btn" onclick="doLogin()"
-          class="w-full h-11 rounded-xl bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700 transition flex items-center justify-center gap-2">
-          Sign in
+
+        <div id="login-error" class="hidden" style="font-size:13px; color:#B91C1C; background:#FEF2F2; border:1px solid #FECACA; border-radius:2px; padding:10px 14px"></div>
+
+        <button id="login-btn" onclick="doLogin()" class="btn-primary"
+          style="width:100%; height:44px; border:none; border-radius:2px; font-size:13px; font-family:inherit; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; margin-top:4px">
+          <span class="label-caps">Sign in &rsaquo;</span>
         </button>
       </div>
     </div>
+
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════ APP SHELL -->
-<div id="screen-app" class="hidden min-h-screen flex flex-col">
+<!-- ═══════════════════════════════ APP SHELL ════════════════════════════════ -->
+<div id="screen-app" class="hidden" style="min-height:100vh; display:flex; flex-direction:column">
 
-  <!-- Top nav -->
-  <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-10">
-    <div class="flex items-center gap-2.5">
-      <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center">
-        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-        </svg>
+  <!-- Nav -->
+  <header style="background:var(--dark); border-bottom:1px solid rgba(255,255,255,.06); padding:0 24px; height:52px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10">
+    <div style="display:flex; align-items:center; gap:12px">
+      <!-- Compact wordmark -->
+      <div style="font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; letter-spacing:.05em; line-height:1; color:#fff">
+        <span class="pm-mark">POSITI</span>VE <span class="pm-mark">MO</span>VES
       </div>
-      <span class="font-semibold text-slate-900 text-sm">Video Pipeline</span>
+      <div style="width:1px; height:14px; background:rgba(255,255,255,.15)"></div>
+      <span class="label-caps" style="color:rgba(255,255,255,.35)">Candidate Video</span>
     </div>
-    <div class="flex items-center gap-3">
-      <span id="nav-user" class="text-xs text-slate-500"></span>
-      <button onclick="doLogout()" class="text-xs text-slate-500 hover:text-slate-800 transition border border-slate-200 rounded-lg px-3 py-1.5">Sign out</button>
+    <div style="display:flex; align-items:center; gap:12px">
+      <span id="nav-user" style="font-size:12px; color:rgba(255,255,255,.35)"></span>
+      <button onclick="doLogout()" class="btn-outline-dark label-caps"
+        style="padding:6px 14px; border-radius:2px; font-size:11px; font-family:inherit; cursor:pointer">
+        Sign out
+      </button>
     </div>
   </header>
 
-  <main class="flex-1 p-6 max-w-4xl mx-auto w-full">
+  <main style="flex:1; padding:40px 24px; max-width:780px; margin:0 auto; width:100%">
 
     <!-- ─── UPLOAD VIEW ─── -->
     <div id="view-upload" class="fade-in">
-      <div class="mb-6">
-        <h2 class="text-xl font-bold text-slate-900">Generate Video</h2>
-        <p class="text-sm text-slate-500 mt-1">Upload a dossier PDF and the AI pipeline will generate a video for you.</p>
+      <div style="margin-bottom:32px">
+        <p class="label-caps" style="color:var(--orange); margin:0 0 8px">New run</p>
+        <h2 class="font-display" style="font-size:36px; font-weight:600; color:var(--fg); margin:0 0 8px; line-height:1.1">Generate Candidate Video</h2>
+        <p style="font-size:14px; color:var(--muted); margin:0">Upload a dossier PDF and the pipeline will design, narrate, and render the video automatically.</p>
       </div>
 
-      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <div class="card" style="background:var(--white); border-radius:4px; padding:24px; border:1px solid var(--border)">
         <!-- Drop zone -->
         <div id="drop-zone"
           onclick="document.getElementById('file-input').click()"
-          ondragover="event.preventDefault();this.classList.add('border-indigo-400','bg-indigo-50/50')"
-          ondragleave="this.classList.remove('border-indigo-400','bg-indigo-50/50')"
+          ondragover="event.preventDefault();this.classList.add('drop-active')"
+          ondragleave="this.classList.remove('drop-active')"
           ondrop="handleDrop(event)"
-          class="border-2 border-dashed border-slate-200 rounded-xl p-12 text-center cursor-pointer transition hover:border-indigo-300 hover:bg-slate-50">
-          <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
-          </svg>
-          <p class="text-sm font-medium text-slate-700">Drop your dossier PDF here</p>
-          <p class="text-xs text-slate-400 mt-1">or click to browse · PDF only · max 50 MB</p>
+          style="border:2px dashed var(--border); border-radius:2px; padding:48px 24px; text-align:center; cursor:pointer; transition:border-color .15s, background .15s">
+          <div style="width:44px; height:44px; background:var(--cream); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--muted)">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+            </svg>
+          </div>
+          <p style="font-size:14px; font-weight:600; color:var(--fg); margin:0 0 4px">Drop dossier PDF here</p>
+          <p style="font-size:12px; color:var(--muted); margin:0">or click to browse &middot; PDF only &middot; max 50 MB</p>
           <input type="file" id="file-input" accept=".pdf" class="hidden" onchange="handleFileSelect(this.files[0])"/>
         </div>
 
         <!-- Selected file pill -->
-        <div id="file-pill" class="hidden mt-4 flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
-          <svg class="w-5 h-5 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div id="file-pill" class="hidden" style="margin-top:16px; display:flex; align-items:center; gap:12px; background:#F0FDF4; border:1px solid #BBF7D0; border-radius:2px; padding:12px 16px">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:#16A34A; flex-shrink:0">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
           </svg>
-          <div class="flex-1 min-w-0">
-            <p id="file-name" class="text-sm font-medium text-indigo-800 truncate"></p>
-            <p id="file-size" class="text-xs text-indigo-500"></p>
+          <div style="flex:1; min-width:0">
+            <p id="file-name" style="font-size:13px; font-weight:600; color:#15803D; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
+            <p id="file-size" style="font-size:12px; color:#16A34A; margin:0"></p>
           </div>
-          <button onclick="clearFile()" class="text-indigo-400 hover:text-indigo-600 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button onclick="clearFile()" style="background:none; border:none; cursor:pointer; color:#86EFAC; padding:0; display:flex">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </button>
         </div>
 
-        <div id="upload-error" class="hidden mt-4 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3"></div>
+        <div id="upload-error" class="hidden" style="margin-top:16px; font-size:13px; color:#B91C1C; background:#FEF2F2; border:1px solid #FECACA; border-radius:2px; padding:10px 16px"></div>
 
-        <button id="generate-btn" onclick="startGeneration()" disabled
-          class="mt-5 w-full h-12 rounded-xl bg-indigo-600 text-sm font-semibold text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-indigo-700">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button id="generate-btn" onclick="startGeneration()" disabled class="btn-primary"
+          style="margin-top:20px; width:100%; height:48px; border:none; border-radius:2px; font-size:13px; font-family:inherit; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px">
+          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
           </svg>
-          Generate Video
+          <span class="label-caps">Generate Video</span>
         </button>
       </div>
     </div>
 
     <!-- ─── PROGRESS VIEW ─── -->
     <div id="view-progress" class="hidden fade-in">
-      <div class="mb-6 flex items-center justify-between">
+      <div style="margin-bottom:32px; display:flex; align-items:flex-start; justify-content:space-between; gap:16px">
         <div>
-          <h2 class="text-xl font-bold text-slate-900">Processing Dossier</h2>
-          <p id="progress-filename" class="text-sm text-slate-500 mt-1"></p>
+          <p class="label-caps" style="color:var(--orange); margin:0 0 8px">Processing</p>
+          <h2 class="font-display" style="font-size:36px; font-weight:600; color:var(--fg); margin:0 0 6px; line-height:1.1">Pipeline Running</h2>
+          <p id="progress-filename" style="font-size:13px; color:var(--muted); margin:0; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
         </div>
-        <div id="progress-status-badge" class="text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-100 text-amber-700">Running</div>
+        <div id="progress-status-badge" class="label-caps" style="background:#FEF9C3; color:#854D0E; padding:6px 14px; border-radius:2px; white-space:nowrap; margin-top:4px">Running</div>
       </div>
 
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-100">
-          <h3 class="text-sm font-semibold text-slate-700">Pipeline Steps</h3>
+      <div class="card" style="background:var(--white); border-radius:4px; overflow:hidden; border:1px solid var(--border)">
+        <div style="padding:16px 24px; border-bottom:1px solid var(--border)">
+          <p class="label-caps" style="color:var(--muted); margin:0">Pipeline Steps</p>
         </div>
-        <ul id="step-list" class="divide-y divide-slate-100">
-          <!-- Steps injected by JS -->
-        </ul>
+        <ul id="step-list" style="margin:0; padding:0; list-style:none"></ul>
       </div>
 
-      <div id="pipeline-error" class="hidden mt-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3"></div>
+      <div id="pipeline-error" class="hidden" style="margin-top:16px; font-size:13px; color:#B91C1C; background:#FEF2F2; border:1px solid #FECACA; border-radius:2px; padding:12px 16px"></div>
 
-      <!-- Results panels (shown after done) -->
-      <div id="results-section" class="hidden mt-6 space-y-5 fade-in">
+      <!-- Results -->
+      <div id="results-section" class="hidden fade-in" style="margin-top:32px; display:flex; flex-direction:column; gap:24px">
 
         <!-- Artifacts -->
         <div id="artifacts-panel" class="hidden">
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
-              <svg class="w-4 h-4 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-              </svg>
-            </div>
-            <h3 class="text-sm font-semibold text-slate-800">Generated Artifacts</h3>
-            <span id="artifacts-count" class="text-xs text-slate-400"></span>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px">
+            <div style="width:6px; height:6px; background:var(--orange); border-radius:50%"></div>
+            <p class="label-caps" style="color:var(--fg); margin:0">Generated Visuals</p>
+            <span id="artifacts-count" style="font-size:12px; color:var(--muted)"></span>
           </div>
-          <div id="artifacts-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+          <div id="artifacts-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px"></div>
         </div>
 
         <!-- Audio -->
         <div id="audio-panel" class="hidden">
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
-              </svg>
-            </div>
-            <h3 class="text-sm font-semibold text-slate-800">Generated Audio</h3>
-            <span id="audio-count" class="text-xs text-slate-400"></span>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px">
+            <div style="width:6px; height:6px; background:var(--orange); border-radius:50%"></div>
+            <p class="label-caps" style="color:var(--fg); margin:0">Voiceover Audio</p>
+            <span id="audio-count" style="font-size:12px; color:var(--muted)"></span>
           </div>
-          <div id="audio-list" class="space-y-2"></div>
+          <div id="audio-list" style="display:flex; flex-direction:column; gap:8px"></div>
         </div>
 
-        <!-- Video -->
+        <!-- Video — hero card -->
         <div id="video-panel" class="hidden">
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center">
-              <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-              </svg>
-            </div>
-            <h3 class="text-sm font-semibold text-slate-800">Final Video</h3>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px">
+            <div style="width:6px; height:6px; background:var(--orange); border-radius:50%"></div>
+            <p class="label-caps" style="color:var(--fg); margin:0">Final Video</p>
           </div>
-          <div class="bg-white rounded-2xl border border-indigo-100 p-5 flex items-center justify-between shadow-sm">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div style="background:var(--dark); border-radius:4px; padding:24px 28px; display:flex; align-items:center; justify-content:space-between; gap:20px">
+            <div style="display:flex; align-items:center; gap:16px">
+              <div style="width:44px; height:44px; background:rgba(224,92,28,.15); border:1px solid rgba(224,92,28,.25); border-radius:2px; display:flex; align-items:center; justify-content:center; flex-shrink:0">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--orange)">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
               </div>
               <div>
-                <p id="video-name" class="text-sm font-semibold text-slate-800"></p>
-                <p id="video-size" class="text-xs text-slate-400 mt-0.5"></p>
+                <p id="video-name" style="font-size:14px; font-weight:600; color:#fff; margin:0"></p>
+                <p id="video-size" style="font-size:12px; color:rgba(255,255,255,.4); margin:2px 0 0"></p>
               </div>
             </div>
-            <button id="video-download-btn"
-              class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button id="video-download-btn" class="btn-primary label-caps"
+              style="padding:12px 24px; border:none; border-radius:2px; font-size:11px; font-family:inherit; cursor:pointer; display:flex; align-items:center; gap:8px; flex-shrink:0">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
               </svg>
               Download MP4
@@ -213,23 +293,20 @@
 
         <!-- Costs -->
         <div id="costs-panel" class="hidden">
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center">
-              <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-            </div>
-            <h3 class="text-sm font-semibold text-slate-800">API Spend</h3>
-            <span id="costs-total" class="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5"></span>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px">
+            <div style="width:6px; height:6px; background:var(--orange); border-radius:50%"></div>
+            <p class="label-caps" style="color:var(--fg); margin:0">API Spend</p>
+            <span id="costs-total" class="label-caps" style="color:var(--orange); background:rgba(224,92,28,.08); padding:3px 10px; border-radius:2px; font-size:10px"></span>
           </div>
-          <div id="costs-breakdown" class="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100"></div>
+          <div id="costs-breakdown" class="card" style="background:var(--white); border-radius:4px; overflow:hidden; border:1px solid var(--border)"></div>
         </div>
 
-        <!-- New run button -->
-        <button onclick="resetToUpload()"
-          class="w-full h-11 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
-          Generate Another Video
+        <!-- New run -->
+        <button onclick="resetToUpload()" class="btn-ghost label-caps"
+          style="width:100%; height:44px; border-radius:2px; font-size:11px; font-family:inherit; cursor:pointer">
+          Generate Another Video &rsaquo;
         </button>
+
       </div>
     </div>
 
@@ -244,14 +321,14 @@ let selectedFile = null;
 let currentJobId  = null;
 
 const STEPS_META = {
-  prepare_document:    { label: 'Prepare Document',       icon: '📄', num: 1 },
-  extract_dossier:     { label: 'Extract Dossier (AI)',   icon: '🧠', num: 2 },
-  validate_extraction: { label: 'Validate Extraction',    icon: '✅', num: 3 },
-  select_video_content:{ label: 'Select Video Content',   icon: '🎬', num: 4 },
-  generate_scenes:     { label: 'Design Scenes (AI)',     icon: '🎨', num: 5 },
-  generate_artifacts:  { label: 'Generate Images (AI)',   icon: '🖼️', num: 6 },
-  generate_audio:      { label: 'Generate Voiceover',     icon: '🎙️', num: 7 },
-  render_video:        { label: 'Render Video',           icon: '🖥️', num: 8 },
+  prepare_document:    { label: 'Prepare Document',       num: 1 },
+  extract_dossier:     { label: 'Extract Dossier (AI)',   num: 2 },
+  validate_extraction: { label: 'Validate Extraction',    num: 3 },
+  select_video_content:{ label: 'Select Video Content',   num: 4 },
+  generate_scenes:     { label: 'Design Scenes (AI)',     num: 5 },
+  generate_artifacts:  { label: 'Generate Visuals (AI)',  num: 6 },
+  generate_audio:      { label: 'Generate Voiceover',     num: 7 },
+  render_video:        { label: 'Render Video',           num: 8 },
 };
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -261,24 +338,25 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   };
   if (AUTH_TOKEN) {
-    // Validate the stored token is still accepted by the server
     try {
       const res = await fetch('/api/status/ping', { headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN } });
       if (res.status === 401) { AUTH_TOKEN = null; AUTH_USER = null; localStorage.removeItem('vp_token'); localStorage.removeItem('vp_user'); }
     } catch {}
   }
-  if (AUTH_TOKEN) {
-    showApp();
-  } else {
-    show('screen-login');
-    attachLoginKey();
-  }
+  if (AUTH_TOKEN) { showApp(); }
+  else { show('screen-login'); attachLoginKey(); }
 });
 
-// ─── Screen helpers ───────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function show(id) {
-  ['screen-login','screen-app'].forEach(s => document.getElementById(s).classList.add('hidden'));
-  document.getElementById(id).classList.remove('hidden');
+  ['screen-login','screen-app'].forEach(s => {
+    const el = document.getElementById(s);
+    el.classList.add('hidden');
+    el.style.display = '';
+  });
+  const t = document.getElementById(id);
+  t.classList.remove('hidden');
+  if (id === 'screen-app') t.style.display = 'flex';
 }
 function showView(id) {
   ['view-upload','view-progress'].forEach(v => document.getElementById(v).classList.add('hidden'));
@@ -298,20 +376,19 @@ async function doLogin() {
   const pass = document.getElementById('login-pass').value;
   err.classList.add('hidden');
   btn.disabled = true;
-  btn.innerHTML = '<svg class="w-4 h-4 spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Signing in…';
+  btn.innerHTML = '<svg class="spin" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> <span class="label-caps">Signing in…</span>';
   try {
     const res = await api('/api/login', 'POST', { username: user, password: pass }, false);
-    AUTH_TOKEN = res.token;
-    AUTH_USER  = res.username;
+    AUTH_TOKEN = res.token; AUTH_USER = res.username;
     localStorage.setItem('vp_token', AUTH_TOKEN);
-    localStorage.setItem('vp_user',  AUTH_USER);
+    localStorage.setItem('vp_user', AUTH_USER);
     showApp();
   } catch (e) {
     err.textContent = e.message || 'Invalid credentials';
     err.classList.remove('hidden');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Sign in';
+    btn.innerHTML = '<span class="label-caps">Sign in &rsaquo;</span>';
   }
 }
 
@@ -334,7 +411,7 @@ function handleFileSelect(f) {
 }
 function handleDrop(e) {
   e.preventDefault();
-  document.getElementById('drop-zone').classList.remove('border-indigo-400','bg-indigo-50/50');
+  document.getElementById('drop-zone').classList.remove('drop-active');
   const f = e.dataTransfer.files[0];
   if (f && f.name.toLowerCase().endsWith('.pdf')) handleFileSelect(f);
 }
@@ -351,7 +428,6 @@ async function startGeneration() {
   const err = document.getElementById('upload-error');
   err.classList.add('hidden');
   document.getElementById('generate-btn').disabled = true;
-
   const form = new FormData();
   form.append('file', selectedFile);
   try {
@@ -361,10 +437,7 @@ async function startGeneration() {
       body: form,
     });
     if (res.status === 401) { doLogout(); throw new Error('Session expired — please sign in again'); }
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      throw new Error(d.detail || 'Upload failed');
-    }
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.detail || 'Upload failed'); }
     const { job_id } = await res.json();
     currentJobId = job_id;
     showProgressView();
@@ -382,19 +455,20 @@ function showProgressView() {
   document.getElementById('progress-filename').textContent = selectedFile?.name || '';
   document.getElementById('results-section').classList.add('hidden');
   document.getElementById('pipeline-error').classList.add('hidden');
-  document.getElementById('progress-status-badge').className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-100 text-amber-700';
-  document.getElementById('progress-status-badge').textContent = 'Running';
+  const badge = document.getElementById('progress-status-badge');
+  badge.style.background = '#FEF9C3'; badge.style.color = '#854D0E';
+  badge.textContent = 'Running';
 
   const list = document.getElementById('step-list');
   list.innerHTML = Object.entries(STEPS_META).map(([key, m]) => `
-    <li id="step-${key}" class="flex items-center gap-4 px-6 py-4">
-      <div class="step-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-slate-100 text-slate-400 shrink-0">${m.num}</div>
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-slate-700">${m.label}</p>
-        <p class="step-detail text-xs text-slate-400 mt-0.5 truncate"></p>
+    <li id="step-${key}" style="display:flex; align-items:center; gap:16px; padding:14px 24px">
+      <div class="step-icon" style="width:28px; height:28px; border-radius:50%; background:var(--cream2); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; font-weight:600; color:var(--muted)">${m.num}</div>
+      <div style="flex:1; min-width:0">
+        <p style="font-size:13px; font-weight:500; color:var(--fg); margin:0">${m.label}</p>
+        <p class="step-detail" style="font-size:12px; color:var(--muted); margin:2px 0 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
       </div>
-      <span class="step-timer text-xs text-slate-400 font-mono shrink-0 w-12 text-right"></span>
-      <div class="step-badge"></div>
+      <span class="step-timer" style="font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; flex-shrink:0; width:40px; text-align:right"></span>
+      <div class="step-badge" style="width:52px; text-align:right; flex-shrink:0"></div>
     </li>
   `).join('');
 }
@@ -410,28 +484,28 @@ function fmtDuration(ms) {
 function updateStep(name, status, detail, duration_ms) {
   const li = document.getElementById('step-' + name);
   if (!li) return;
-  const icon = li.querySelector('.step-icon');
-  const det  = li.querySelector('.step-detail');
+  const icon  = li.querySelector('.step-icon');
+  const det   = li.querySelector('.step-detail');
   const badge = li.querySelector('.step-badge');
   const timer = li.querySelector('.step-timer');
   if (detail) det.textContent = detail;
 
   if (status === 'running') {
-    icon.className = 'step-icon w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-amber-100';
-    icon.innerHTML = '<svg class="w-4 h-4 text-amber-600 spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>';
-    badge.innerHTML = '<span class="text-xs text-amber-600 font-medium">Running</span>';
+    icon.style.background = 'rgba(224,92,28,.12)';
+    icon.innerHTML = '<svg class="spin" width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--orange)"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>';
+    badge.innerHTML = '<span style="font-size:11px; font-weight:600; color:var(--orange)">Running</span>';
     if (timer) { timer.textContent = ''; li._startTs = Date.now(); startLiveTimer(name); }
   } else if (status === 'done') {
     stopLiveTimer(name);
-    icon.className = 'step-icon w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-emerald-100';
-    icon.innerHTML = '<svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
-    badge.innerHTML = '<span class="text-xs text-emerald-600 font-medium">Done</span>';
+    icon.style.background = '#F0FDF4';
+    icon.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:#16A34A"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+    badge.innerHTML = '<span style="font-size:11px; font-weight:600; color:#16A34A">Done</span>';
     if (timer) timer.textContent = fmtDuration(duration_ms);
   } else if (status === 'failed') {
     stopLiveTimer(name);
-    icon.className = 'step-icon w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-rose-100';
-    icon.innerHTML = '<svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
-    badge.innerHTML = '<span class="text-xs text-rose-600 font-medium">Failed</span>';
+    icon.style.background = '#FFF1F2';
+    icon.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:#E11D48"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+    badge.innerHTML = '<span style="font-size:11px; font-weight:600; color:#E11D48">Failed</span>';
     if (timer) timer.textContent = fmtDuration(duration_ms);
   }
 }
@@ -459,15 +533,12 @@ async function listenForUpdates(jobId) {
   es.addEventListener('complete', async e => {
     es.close();
     const d = JSON.parse(e.data);
+    const badge = document.getElementById('progress-status-badge');
     if (d.status === 'done') {
-      const badge = document.getElementById('progress-status-badge');
-      badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700';
-      badge.textContent = 'Complete';
+      badge.style.background = '#F0FDF4'; badge.style.color = '#15803D'; badge.textContent = 'Complete';
       await loadResults(jobId);
     } else {
-      const badge = document.getElementById('progress-status-badge');
-      badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-rose-100 text-rose-700';
-      badge.textContent = 'Failed';
+      badge.style.background = '#FFF1F2'; badge.style.color = '#9F1239'; badge.textContent = 'Failed';
       document.getElementById('pipeline-error').textContent = d.error || 'Pipeline failed.';
       document.getElementById('pipeline-error').classList.remove('hidden');
     }
@@ -479,11 +550,12 @@ async function pollStatus(jobId) {
   try {
     const data = await api(`/api/status/${jobId}/poll`, 'GET', null);
     for (const step of (data.steps || [])) updateStep(step.step, step.status, step.detail, step.duration_ms);
+    const badge = document.getElementById('progress-status-badge');
     if (data.status === 'done') {
-      document.getElementById('progress-status-badge').className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700';
-      document.getElementById('progress-status-badge').textContent = 'Complete';
+      badge.style.background = '#F0FDF4'; badge.style.color = '#15803D'; badge.textContent = 'Complete';
       await loadResults(jobId);
     } else if (data.status === 'failed') {
+      badge.style.background = '#FFF1F2'; badge.style.color = '#9F1239'; badge.textContent = 'Failed';
       document.getElementById('pipeline-error').textContent = data.error || 'Pipeline failed.';
       document.getElementById('pipeline-error').classList.remove('hidden');
     } else {
@@ -501,19 +573,20 @@ async function loadResults(jobId) {
     if (files.artifacts && files.artifacts.length) {
       const grid = document.getElementById('artifacts-grid');
       grid.innerHTML = files.artifacts.map(a => `
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden group relative">
+        <div class="artifact-card" style="background:var(--white); border-radius:4px; overflow:hidden; border:1px solid var(--border); position:relative">
           <img src="/api/download/${jobId}/artifact/${encodeURIComponent(a.name)}?token=${AUTH_TOKEN}"
-               class="w-full h-36 object-cover bg-slate-100"
-               onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23f1f5f9%22 width=%22100%22 height=%22100%22/><text y=%2250%25%22 x=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2212%22 fill=%22%2394a3b8%22>Image</text></svg>'"/>
-          <div class="p-2.5">
-            <p class="text-xs font-medium text-slate-700 truncate">${a.name.replace(/_/g,' ').replace('.png','')}</p>
-            <p class="text-xs text-slate-400 mt-0.5">${a.size_kb} KB</p>
+               style="width:100%; height:140px; object-fit:cover; background:var(--cream2); display:block"
+               onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 60%22><rect fill=%22%23EAE7E4%22 width=%22100%22 height=%22100%22/><text y=%2255%25%22 x=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%228%22 fill=%22%23999%22>Image</text></svg>'"/>
+          <div style="padding:10px 12px">
+            <p style="font-size:12px; font-weight:600; color:var(--fg); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${a.name.replace(/_/g,' ').replace('.png','')}</p>
+            <p style="font-size:11px; color:var(--muted); margin:2px 0 0">${a.size_kb} KB</p>
           </div>
           <a href="/api/download/${jobId}/artifact/${encodeURIComponent(a.name)}?token=${AUTH_TOKEN}"
              download="${a.name}"
-             class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl">
-            <span class="bg-white text-slate-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+             style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(30,28,27,.6); opacity:0; transition:opacity .15s; border-radius:4px"
+             onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0'">
+            <span class="label-caps" style="background:var(--white); color:var(--dark); padding:6px 14px; border-radius:2px; font-size:10px; display:flex; align-items:center; gap:6px">
+              <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
               Download
             </span>
           </a>
@@ -528,43 +601,44 @@ async function loadResults(jobId) {
       const list = document.getElementById('audio-list');
       const mp3s = (files.audio || []);
       list.innerHTML = mp3s.map((a, i) => `
-        <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center gap-3">
+        <div style="background:var(--white); border:1px solid var(--border); border-radius:4px; padding:12px 16px; display:flex; align-items:center; gap:12px">
           <button onclick="toggleAudio(${i})" id="play-btn-${i}"
-            class="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 hover:bg-emerald-200 transition">
-            <svg id="play-icon-${i}" class="w-4 h-4 text-emerald-700" fill="currentColor" viewBox="0 0 24 24">
+            style="width:36px; height:36px; border-radius:50%; background:rgba(224,92,28,.1); border:1px solid rgba(224,92,28,.2); display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; transition:background .12s"
+            onmouseover="this.style.background='rgba(224,92,28,.2)'" onmouseout="this.style.background='rgba(224,92,28,.1)'">
+            <svg id="play-icon-${i}" width="14" height="14" fill="currentColor" viewBox="0 0 24 24" style="color:var(--orange)">
               <path d="M8 5v14l11-7z"/>
             </svg>
           </button>
           <audio id="audio-${i}" src="/api/download/${jobId}/audio/${encodeURIComponent(a.name)}?token=${AUTH_TOKEN}"
-            onended="resetAudioBtn(${i})"
-            onplay="setPlayingBtn(${i})"
-            onpause="setPausedBtn(${i})"></audio>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-slate-700 truncate">${a.name.replace(/_/g,' ').replace('.mp3','')}</p>
-            <p class="text-xs text-slate-400 mt-0.5">${a.size_kb} KB · MP3</p>
+            onended="resetAudioBtn(${i})" onplay="setPlayingBtn(${i})" onpause="setPausedBtn(${i})"></audio>
+          <div style="flex:1; min-width:0">
+            <p style="font-size:13px; font-weight:500; color:var(--fg); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${a.name.replace(/_/g,' ').replace('.mp3','')}</p>
+            <p style="font-size:11px; color:var(--muted); margin:2px 0 0">${a.size_kb} KB &middot; MP3</p>
           </div>
           <a href="/api/download/${jobId}/audio/${encodeURIComponent(a.name)}?token=${AUTH_TOKEN}" download="${a.name}"
-            class="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            style="width:32px; height:32px; border:1px solid var(--border); border-radius:2px; display:flex; align-items:center; justify-content:center; color:var(--muted); flex-shrink:0; transition:background .12s"
+            onmouseover="this.style.background='var(--cream)'" onmouseout="this.style.background='transparent'">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
           </a>
         </div>
       `).join('');
 
       if (files.transcript) {
         list.innerHTML += `
-        <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center gap-3">
-          <div class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div style="background:var(--white); border:1px solid var(--border); border-radius:4px; padding:12px 16px; display:flex; align-items:center; gap:12px">
+          <div style="width:36px; height:36px; background:var(--cream2); border:1px solid var(--border); border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--muted)">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
           </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-slate-700">Voiceover Transcript</p>
-            <p class="text-xs text-slate-400 mt-0.5">${files.transcript.size_kb} KB · TXT</p>
+          <div style="flex:1; min-width:0">
+            <p style="font-size:13px; font-weight:500; color:var(--fg); margin:0">Voiceover Transcript</p>
+            <p style="font-size:11px; color:var(--muted); margin:2px 0 0">${files.transcript.size_kb} KB &middot; TXT</p>
           </div>
           <a href="/api/download/${jobId}/transcript?token=${AUTH_TOKEN}" download="voiceover_transcript.txt"
-            class="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            style="width:32px; height:32px; border:1px solid var(--border); border-radius:2px; display:flex; align-items:center; justify-content:center; color:var(--muted); flex-shrink:0"
+            onmouseover="this.style.background='var(--cream)'" onmouseout="this.style.background='transparent'">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
           </a>
         </div>`;
       }
@@ -589,8 +663,7 @@ async function loadResults(jobId) {
       const costs = await api(`/api/costs/${jobId}`, 'GET', null);
       if (costs && !costs.error) {
         const total = costs.direct_api_cost_usd || 0;
-        document.getElementById('costs-total').textContent = `$${total.toFixed(4)} API`;
-        const ops = costs.cost_by_operation || {};
+        document.getElementById('costs-total').textContent = `$${total.toFixed(4)} API cost`;
         const calls = costs.calls || [];
         const breakdown = document.getElementById('costs-breakdown');
         breakdown.innerHTML = calls.map(c => {
@@ -602,33 +675,29 @@ async function loadResults(jobId) {
             : c.billing_type === 'images'
             ? `${(c.images_generated||0)} image${(c.images_generated||0)===1?'':'s'} · ${c.quality||'high'}`
             : `${((c.audio_duration_seconds||0)/60).toFixed(2)} min audio`;
-          return `<div class="px-4 py-3 flex items-center justify-between gap-3">
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-slate-700">${c.operation.replace(/_/g,' ')}</p>
-              <p class="text-xs text-slate-400 mt-0.5">${c.model || ''} · ${detail}</p>
+          return `<div style="padding:12px 20px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid var(--border)">
+            <div style="min-width:0">
+              <p style="font-size:13px; font-weight:500; color:var(--fg); margin:0">${c.operation.replace(/_/g,' ')}</p>
+              <p style="font-size:11px; color:var(--muted); margin:2px 0 0">${c.model || ''} · ${detail}</p>
             </div>
-            <span class="text-sm font-semibold text-slate-700 shrink-0">$${cost.toFixed(5)}</span>
+            <span style="font-size:13px; font-weight:600; color:var(--fg); flex-shrink:0; font-variant-numeric:tabular-nums">$${cost.toFixed(5)}</span>
           </div>`;
         }).join('');
         if (costs.total_technical_cost_usd > 0) {
-          breakdown.innerHTML += `<div class="px-4 py-3 flex items-center justify-between border-t border-slate-200 bg-slate-50 rounded-b-2xl">
-            <p class="text-sm font-semibold text-slate-700">Total (incl. render &amp; storage)</p>
-            <span class="text-sm font-bold text-slate-900">$${(costs.total_technical_cost_usd||0).toFixed(5)}</span>
+          breakdown.innerHTML += `<div style="padding:14px 20px; display:flex; align-items:center; justify-content:space-between; background:var(--cream)">
+            <p style="font-size:13px; font-weight:600; color:var(--fg); margin:0">Total (incl. render &amp; storage)</p>
+            <span style="font-size:14px; font-weight:700; color:var(--dark); font-variant-numeric:tabular-nums">$${(costs.total_technical_cost_usd||0).toFixed(5)}</span>
           </div>`;
         }
         document.getElementById('costs-panel').classList.remove('hidden');
       }
-    } catch (e) {
-      console.warn('costs not available:', e.message);
-    }
+    } catch (e) { console.warn('costs not available:', e.message); }
 
     document.getElementById('results-section').classList.remove('hidden');
-  } catch (e) {
-    console.error('loadResults error', e);
-  }
+  } catch (e) { console.error('loadResults error', e); }
 }
 
-// ─── Audio player helpers ─────────────────────────────────────────────────────
+// ─── Audio helpers ────────────────────────────────────────────────────────────
 let currentlyPlaying = null;
 function toggleAudio(i) {
   const audio = document.getElementById('audio-' + i);
@@ -657,10 +726,8 @@ function resetToUpload() {
   document.getElementById('generate-btn').disabled = true;
   document.getElementById('file-input').value = '';
   document.getElementById('upload-error').classList.add('hidden');
-  document.getElementById('artifacts-panel').classList.add('hidden');
-  document.getElementById('audio-panel').classList.add('hidden');
-  document.getElementById('video-panel').classList.add('hidden');
-  document.getElementById('costs-panel').classList.add('hidden');
+  ['artifacts-panel','audio-panel','video-panel','costs-panel'].forEach(id =>
+    document.getElementById(id).classList.add('hidden'));
   showView('view-upload');
 }
 
@@ -668,11 +735,7 @@ function resetToUpload() {
 async function api(path, method, body, useAuth = true) {
   const headers = { 'Content-Type': 'application/json' };
   if (useAuth && AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
-  const res = await fetch(path, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   if (res.status === 401) { doLogout(); throw new Error('Session expired'); }
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
