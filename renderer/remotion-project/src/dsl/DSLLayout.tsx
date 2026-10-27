@@ -86,7 +86,7 @@ export const DSLLayout: React.FC<Props> = ({spec, ctx}) => {
               gap,
               width: "100%",
               height: "100%",
-              alignItems: "center",
+              alignItems: "stretch",
             },
           },
           renderSlot(spec.left, ctx, spacing.md),

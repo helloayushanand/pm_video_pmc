@@ -15,22 +15,6 @@ from app.schemas.dossier import (
     SensitiveInformation,
     SourceReference,
 )
-from app.schemas.render_spec import (
-    AudioTrack,
-    RenderScene,
-    RenderSpecification,
-    RenderVideoSettings,
-    ThemeSettings,
-)
-
-from app.schemas.storyboard import (
-    PronunciationHint,
-    Storyboard,
-    StoryboardScene,
-    VisualElement,
-    VisualMetadataItem,
-    VoiceoverSegment,
-)
 
 from app.schemas.video_content import (
     CandidateIntroduction,
@@ -39,13 +23,16 @@ from app.schemas.video_content import (
     VideoContent,
 )
 
+from app.schemas.scene_dsl import (
+    ArtifactSpec,
+    SceneSpec,
+    VideoSpec,
+)
+
 __all__ = [
-    "PronunciationHint",
-    "VisualMetadataItem",
     "AdditionalSection",
+    "ArtifactSpec",
     "Assessment",
-    "Assessment",
-    "AudioTrack",
     "Availability",
     "CandidateIntroduction",
     "CandidateProfile",
@@ -56,17 +43,11 @@ __all__ = [
     "LeadershipScope",
     "MediaAsset",
     "OrganisationStructure",
-    "RenderScene",
-    "RenderSpecification",
-    "RenderVideoSettings",
+    "SceneSpec",
     "SelectedCareerMilestone",
     "SelectedHighlight",
     "SensitiveInformation",
     "SourceReference",
-    "Storyboard",
-    "StoryboardScene",
-    "ThemeSettings",
     "VideoContent",
-    "VisualElement",
-    "VoiceoverSegment",
+    "VideoSpec",
 ]

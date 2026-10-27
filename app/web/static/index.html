@@ -255,12 +255,23 @@ const STEPS_META = {
 };
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+  const attachLoginKey = () => {
+    const el = document.getElementById('login-pass');
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  };
+  if (AUTH_TOKEN) {
+    // Validate the stored token is still accepted by the server
+    try {
+      const res = await fetch('/api/status/ping', { headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN } });
+      if (res.status === 401) { AUTH_TOKEN = null; AUTH_USER = null; localStorage.removeItem('vp_token'); localStorage.removeItem('vp_user'); }
+    } catch {}
+  }
   if (AUTH_TOKEN) {
     showApp();
   } else {
     show('screen-login');
-    document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+    attachLoginKey();
   }
 });
 
@@ -349,6 +360,7 @@ async function startGeneration() {
       headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN },
       body: form,
     });
+    if (res.status === 401) { doLogout(); throw new Error('Session expired — please sign in again'); }
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       throw new Error(d.detail || 'Upload failed');
@@ -587,6 +599,8 @@ async function loadResults(jobId) {
             ? `${(c.input_tokens||0).toLocaleString()} in · ${(c.output_tokens||0).toLocaleString()} out tokens`
             : c.billing_type === 'characters'
             ? `${(c.character_count||0).toLocaleString()} chars`
+            : c.billing_type === 'images'
+            ? `${(c.images_generated||0)} image${(c.images_generated||0)===1?'':'s'} · ${c.quality||'high'}`
             : `${((c.audio_duration_seconds||0)/60).toFixed(2)} min audio`;
           return `<div class="px-4 py-3 flex items-center justify-between gap-3">
             <div class="min-w-0">

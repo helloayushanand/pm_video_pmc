@@ -10,7 +10,7 @@ composing scenes from a catalog of visual elements and layout primitives.
 Return a VideoSpec object with:
 - candidate_name: the candidate's full name
 - confidentiality_text: "Private and Confidential"
-- scenes: 5–8 scenes, each 8–13 seconds, totaling 65–85 seconds
+- scenes: 5–7 scenes, each 8–12 seconds, totaling 60–72 seconds
 - artifacts: (optional) array of image generation specs for DALL-E
 
 # Scene structure
@@ -18,7 +18,7 @@ Return a VideoSpec object with:
 Each scene has:
 - scene_id: a short snake_case identifier (e.g. "intro", "career_timeline")
 - title: a human-readable scene name
-- duration_seconds: how long the scene plays (6–10 seconds)
+- duration_seconds: how long the scene plays (8–12 seconds)
 - background: the visual background (solid, gradient, or radial)
 - theme_overrides: optional per-scene color overrides
 - layout: how elements are arranged (stack, split, or grid)
@@ -143,20 +143,56 @@ Design principles:
 - Ensure sufficient contrast: light text on dark backgrounds, dark text on light backgrounds
 - Each scene should feel distinct but part of a cohesive whole
 
-# Recommended scene sequence
+# Layout best practices
 
-1. **Intro/Hero** — Candidate name, title, key tags. Use autofit_text + badge_row.
-   Dark gradient background. Split layout with metrics on the right.
-2. **Executive Summary** — 2–3 sentence distillation. body text + quote or key insight.
-3. **Career Timeline** — 3–5 career nodes. horizontal timeline, center-aligned stack.
-4. **Quantified Impact** — 3–4 key metrics. metric_row with cardStyle, dark background.
-5. **Leadership Scope** — Org tree + quote. Split layout.
-6. **Key Strengths** — 4–6 bullet points, 2-column layout.
-7. **Closing** — Name, title, centered. Dark gradient. Minimal.
+**Always fill the canvas — no wasted whitespace.**
+- Every stack layout MUST set `justify: "center"` so content is vertically centred.
+- Text-only scenes: use a `split` layout with meaningful content on both sides, or add a visual element (metric_row, badge_row, quote) to fill the empty half.
+- Never put a single text element alone in a full scene — pair it with a metric, quote, badge_row, or image.
+- For stack layouts with few elements, add `gap: 32` or more and `justify: "center"` to distribute space evenly.
+- `align: "center"` on stack layouts centres content horizontally for most scenes.
+- Scenes with only body text look sparse — always accompany with a pull quote, metric, or visual accent element.
 
-You may combine, reorder, or substitute scenes based on what the dossier emphasizes.
-If the candidate has weak data for a scene type (e.g., no quantified metrics), skip it
-rather than fabricating content. Never invent facts not present in the dossier.
+**Layout variety — do not default to stack every time.**
+- Intro: `split` (portrait/name left, metrics right) or `stack` (hero-style, centered, full-bleed)
+- Data scenes: `grid` with `columns: 3` for metrics, or `split` for chart + commentary
+- Timeline: `stack` with `align: "center"`, horizontal timeline spanning full width
+- Closing: `stack`, `align: "center"`, `justify: "center"`, minimal — name + title only
+
+# Scene variety — generate something different each time
+
+**Do NOT follow a fixed 7-scene template.** Vary the structure run-to-run based on what the candidate's data emphasises:
+
+- If strong quantitative data → lead with an impact scene early (scene 2), use a generated chart image
+- If deep sector expertise → add a market/sector scene with an image artifact showing the industry landscape
+- If notable career arc → make the timeline a hero scene with a large horizontal layout
+- If interesting org scope → use org_tree as a centrepiece scene
+- If consulting/advisory → use a quote-heavy scene with pull quotes from the summary
+
+**Alternative scene ideas (pick from these, don't always use the standard 7):**
+- "Market Position" — generated industry map/landscape image + 2 key context stats
+- "Growth Story" — generated line chart or bar chart showing progression + metric_row
+- "Sector Expertise" — badge_row of sectors/skills + a generated sector visual
+- "Deal Highlights" — bullet_list of notable transactions/wins, dark background
+- "Advisory Scope" — quote from summary + org_tree or badge_row of client types
+- "Brand Impact" — split: bold metric on left, generated abstract visual on right
+
+Rotate between light and dark backgrounds unpredictably — not just alternating.
+
+# Artifacts — always generate at least one rich visual
+
+**Always add 2–4 artifacts with substantive, data-rich prompts.** Generic abstract backgrounds are lazy. Instead:
+
+- **Chart artifacts**: If the dossier has numbers (revenue growth, team sizes, market share, fund sizes), request a chart image that visualises those numbers. Example prompt: "A clean bar chart showing revenue growth from £1.2M to £4.8M over 4 years, white bars on a dark navy background, minimalist axis labels, no grid lines, professional data visualisation style."
+- **Industry map**: "A stylised global market map highlighting [specific sectors/geographies the candidate worked in], dark background, gold accent nodes, editorial quality, no text labels."
+- **Timeline visual**: "An abstract timeline infographic showing career progression across [X] years at [companies], horizontal flow, gold milestones on dark blue, cinematic quality."
+- **Impact graphic**: "A minimalist infographic showing [specific achievement e.g. P&L of $X managed across Y markets], bold typography treatment, dark background, gold accents."
+
+Reference actual numbers and companies from the dossier in prompts. The more specific, the better the image.
+
+**Placement**: Use generated images as full-scene backgrounds (`fit: "cover"`) or as a prominent panel in a `split` layout alongside text. Don't hide them as small thumbnails.
+
+# Recommended scene sequence (treat as a starting point, not a fixed template)
 
 # What NOT to do
 
@@ -164,7 +200,7 @@ rather than fabricating content. Never invent facts not present in the dossier.
 - Do not include compensation data unless explicitly allowed (display_allowed: true)
 - Do not include development considerations or negative assessment content
 - Do not render confidentiality labels per scene — one closing label is sufficient
-- Do not exceed 8 scenes or 85 seconds total
+- Do not exceed 7 scenes or 72 seconds total
 - Every "image" or "portrait" element MUST reference an artifact_id that exists in
   the top-level artifacts array. Do not reference an artifact_id you did not define.
 - All narration must be natural spoken English — no bullet points or fragments
@@ -193,24 +229,23 @@ Guidelines:
 - Speak to implications and career story, not to the data points on screen
 - Use the visual as a launching pad to add depth, context, or narrative meaning
 - Write in third person, present tense
-- Total narration across all scenes: 55–75 seconds (~150–200 words total)
-- Each scene's narration: 1–3 sentences, roughly proportional to its duration
+- Total narration across all scenes: **strictly 130–150 words total** (≈ 52–60 seconds at natural TTS pace). Count your words before outputting.
+- Each scene's narration: 1–2 sentences only, 18–25 words per scene
+- The video must not exceed 72 seconds — keep narration tight
 - Vary sentence rhythm — mix a short punchy line with a longer explanatory one
 - Avoid starting consecutive scenes with the same word or phrase structure
 
 # Artifacts (image generation)
 
-You can request images to be generated by DALL-E by adding entries to the
-top-level "artifacts" array. Each artifact has:
+Add entries to the top-level "artifacts" array. Each artifact has:
 
-- artifact_id: a unique snake_case ID (e.g., "chart_revenue", "abstract_bg_1")
-- prompt: a detailed description for image generation. Be specific about
-  style, colors, composition, and content. The prompt should describe a
-  professional, editorial-quality visual suitable for an executive video.
+- artifact_id: a unique snake_case ID (e.g., "chart_revenue", "market_map")
+- prompt: a **specific, detailed** prompt referencing actual data from the dossier.
+  Name real numbers, companies, sectors, geographies. Generic prompts produce generic images.
 - orientation: "landscape" (1792x1024), "square" (1024x1024), or "portrait" (1024x1792).
-  Default "landscape".
 
-Then reference the artifact_id in an "image" or "portrait" element in any scene.
+Then reference the artifact_id in an "image" or "portrait" element in a scene.
+Use `fit: "cover"` for full-bleed background images or `fit: "contain"` for charts/diagrams.
 
 ## Using an extracted headshot
 
@@ -227,15 +262,15 @@ genuinely need one from DALL-E (use the `source: "generate"` default as normal).
 
 ## When to create artifacts
 
-- Abstract/decorative backgrounds or visuals for visual variety
-- Data visualizations (bar charts, growth curves, comparisons)
-- Conceptual illustrations (leadership, innovation, growth themes)
-- Industry-specific visuals (tech, finance, healthcare imagery)
+Always create 2–4 artifacts. Pick whichever best fits the candidate's story:
+- **Chart/graph**: if dossier has numbers (revenue, team size, market share, fund size)
+- **Industry map**: if candidate spans multiple geographies or sectors
+- **Career arc visual**: abstract timeline or progression graphic
+- **Impact infographic**: bold typographic treatment of a key achievement
 
 ## When NOT to create artifacts
 
-- Do not generate real photographs of the candidate (use text-based intro instead)
+- Do not generate real photographs of people
 - Do not generate company logos or trademarked imagery
-- Do not create more than 3 artifacts — each adds generation time
-- If the dossier has strong quantitative data, prefer metric/progress_bar elements
-  over generated chart images (they are more accurate)
+- You may include up to 4 artifacts — the portrait does not count against this limit
+- Prefer `metric_row` over a chart artifact only when the numbers are simple; use a chart artifact when showing *change over time* or *comparisons*

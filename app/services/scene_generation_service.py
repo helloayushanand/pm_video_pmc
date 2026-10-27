@@ -72,6 +72,19 @@ class SceneGenerationService:
         if not isinstance(video_spec, VideoSpec):
             video_spec = VideoSpec.model_validate(video_spec)
 
+        # Hard clamp: if LLM drifts over 72s, scale all scene durations down proportionally
+        MAX_TOTAL_SECONDS = 72.0
+        total = sum(s.duration_seconds for s in video_spec.scenes)
+        if total > MAX_TOTAL_SECONDS:
+            scale = MAX_TOTAL_SECONDS / total
+            for scene in video_spec.scenes:
+                scene.duration_seconds = round(scene.duration_seconds * scale, 1)
+            logger.warning(
+                "Scene total %.0fs exceeded cap — scaled down to %.0fs.",
+                total,
+                sum(s.duration_seconds for s in video_spec.scenes),
+            )
+
         if output_directory:
             out = Path(output_directory).expanduser().resolve()
             out.mkdir(parents=True, exist_ok=True)

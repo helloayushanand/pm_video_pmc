@@ -335,11 +335,11 @@ class CostService:
                 / "selection_metadata.json",
             ),
             (
-                "storyboard_generation",
-                "generate_storyboard",
+                "scene_generation",
+                "generate_scenes",
                 run_path
-                / "05_storyboard"
-                / "storyboard_metadata.json",
+                / "05_dsl_scenes"
+                / "scene_generation_metadata.json",
             ),
         ]
 
