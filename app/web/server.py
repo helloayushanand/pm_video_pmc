@@ -107,6 +107,21 @@ async def logout(session=Depends(require_auth), authorization: str = Header(defa
     return {"ok": True}
 
 
+@app.get("/api/status/ping")
+async def ping(_session=Depends(require_auth)):
+    return {"ok": True}
+
+
+@app.get("/api/costs/{job_id}")
+async def get_costs(job_id: str, _session=Depends(require_auth)):
+    if job_id not in JOBS:
+        raise HTTPException(404, "Job not found.")
+    costs = JOBS[job_id].get("costs")
+    if costs is None:
+        raise HTTPException(404, "Cost data not yet available.")
+    return JSONResponse(costs)
+
+
 # ---------------------------------------------------------------------------
 # Pipeline endpoints
 # ---------------------------------------------------------------------------
@@ -288,21 +303,6 @@ async def download_audio(job_id: str, filename: str, _session=Depends(require_au
 
 
 # ---------------------------------------------------------------------------
-# Costs endpoint
-# ---------------------------------------------------------------------------
-
-@app.get("/api/costs/{job_id}")
-async def get_costs(job_id: str, _session=Depends(require_auth)):
-    if job_id not in JOBS:
-        raise HTTPException(404, "Job not found.")
-    job = JOBS[job_id]
-    costs = job.get("costs")
-    if costs is None:
-        raise HTTPException(404, "Cost data not yet available.")
-    return JSONResponse(costs)
-
-
-# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -353,9 +353,7 @@ async def _run_pipeline(job_id: str):
         _emit(job_id, current_step, "running", "Preparing PDF pages…")
         run_dir = await asyncio.to_thread(_step_prepare, pdf_path)
         job["run_dir"] = str(run_dir)
-        # Detect headshot in background — non-blocking, failures are non-fatal
-        headshot_path = await asyncio.to_thread(_step_detect_headshot, run_dir)
-        _emit(job_id, current_step, "done", "headshot found" if headshot_path else "")
+        _emit(job_id, current_step, "done")
 
         current_step = "extract_dossier"
         _emit(job_id, current_step, "running", "Extracting dossier with AI…")
@@ -373,6 +371,9 @@ async def _run_pipeline(job_id: str):
         _emit(job_id, current_step, "done")
 
         current_step = "generate_scenes"
+        _emit(job_id, current_step, "running", "Detecting headshot…")
+        headshot_path = await asyncio.to_thread(_find_headshot, run_dir)
+        logger.info("Headshot detection: %s", headshot_path or "not found")
         _emit(job_id, current_step, "running", "Designing scenes with AI…")
         video_spec = await asyncio.to_thread(_step_generate_scenes, run_dir, headshot_path)
         job["candidate_name"] = video_spec.candidate_name
@@ -381,39 +382,28 @@ async def _run_pipeline(job_id: str):
             current_step,
             "done",
             f"{len(video_spec.scenes)} scenes · "
-            f"{sum(s.duration_seconds for s in video_spec.scenes):.0f}s total",
+            f"{sum(s.duration_seconds for s in video_spec.scenes):.0f}s base (final duration set after audio)",
         )
 
         current_step = "generate_artifacts"
-        artifact_manifest = None
-        if video_spec.artifacts:
-            _emit(job_id, current_step, "running", f"Generating {len(video_spec.artifacts)} image(s) with AI…")
-            artifact_manifest = await asyncio.to_thread(_step_generate_artifacts, run_dir, video_spec, headshot_path)
-            generated = len(artifact_manifest.get("artifacts", []))
-            _emit(job_id, current_step, "done", f"{generated} image(s) ready")
-        else:
-            _emit(job_id, current_step, "done", "No images requested")
+        _emit(job_id, current_step, "running", f"Generating {len(video_spec.artifacts)} image(s) with AI…")
+        artifact_manifest = await asyncio.to_thread(_step_generate_artifacts, run_dir, video_spec, headshot_path)
+        generated = len(artifact_manifest.get("artifacts", []))
+        _emit(job_id, current_step, "done", f"{generated} image(s) ready")
 
         current_step = "generate_audio"
         _emit(job_id, current_step, "running", "Generating voiceover audio…")
-        audio_path, audio_duration = await asyncio.to_thread(_step_generate_audio, run_dir, video_spec)
-        if audio_path:
-            _emit(job_id, current_step, "done", f"{audio_path.stat().st_size / 1024:.0f} KB · {audio_duration:.1f}s")
-        else:
-            _emit(job_id, current_step, "done", "Skipped (no narration)")
-
-        # Build the spec dict and align scene durations to match audio
-        video_spec_dict = video_spec.model_dump(mode="json", by_alias=True)
-        if audio_path and audio_duration > 0:
-            original_total = sum(s.get("duration_seconds", 8.0) for s in video_spec_dict.get("scenes", []))
-            video_spec_dict = _align_scene_durations(video_spec_dict, audio_duration)
-            new_total = sum(s.get("duration_seconds", 8.0) for s in video_spec_dict.get("scenes", []))
-            if abs(new_total - original_total) > 0.5:
-                logger.info("Scene durations scaled %.1fs → %.1fs to match audio (%.1fs)", original_total, new_total, audio_duration)
+        scene_audio = await asyncio.to_thread(_step_generate_audio, run_dir, video_spec)
+        total_audio = sum(a["duration_seconds"] for a in scene_audio)
+        total_video = sum(s.duration_seconds for s in video_spec.scenes)
+        _emit(job_id, current_step, "done",
+              f"{len(scene_audio)} clips · {total_audio:.1f}s" if scene_audio else "Skipped (no narration)")
 
         current_step = "render_video"
         _emit(job_id, current_step, "running", "Rendering video with Remotion…")
-        video_path = await asyncio.to_thread(_step_render, run_dir, video_spec_dict, audio_path, artifact_manifest)
+        # Dump AFTER audio step so scene durations reflect audio-adjusted values
+        video_spec_dict = video_spec.model_dump(mode="json", by_alias=True)
+        video_path = await asyncio.to_thread(_step_render, run_dir, video_spec_dict, scene_audio, artifact_manifest)
         job["video_path"] = str(video_path)
         _emit(job_id, current_step, "done", f"{video_path.stat().st_size / 1_048_576:.1f} MB")
 
@@ -433,6 +423,21 @@ async def _run_pipeline(job_id: str):
         job["error"] = error_msg
         if current_step:
             _emit(job_id, current_step, "failed", str(exc))
+
+
+def _step_calculate_costs(run_dir: Path) -> dict:
+    try:
+        from app.services.cost_service import CostService
+        costs_dir = run_dir / "11_costs"
+        costs_dir.mkdir(parents=True, exist_ok=True)
+        service = CostService()
+        return service.calculate_run_costs(
+            run_directory=run_dir,
+            output_directory=costs_dir,
+        )
+    except Exception as exc:
+        logger.warning("Cost calculation failed: %s", exc)
+        return {"error": str(exc)}
 
 
 def _step_prepare(pdf_path: str) -> Path:
@@ -469,29 +474,140 @@ def _step_select_content(run_dir: Path):
     select_video_content(run_directory=run_dir, model=settings.openai_model)
 
 
-def _step_detect_headshot(run_dir: Path) -> Path | None:
-    """Extract embedded PDF images and identify a candidate headshot if present."""
+
+def _find_headshot(run_dir: Path) -> Path | None:
+    """Extract all images from the PDF (XObjects + inline) and ask the VLM to identify the portrait."""
     try:
-        from app.services.artifact_service import ArtifactService
-        service = ArtifactService()
+        import base64
+        import json as _json
+        import pymupdf
+        from openai import OpenAI
+        from app.config import settings
+
+        pdf_files = sorted((run_dir / "00_input").glob("*.pdf"))
+        if not pdf_files:
+            return None
+
         extracted_dir = run_dir / "01_document" / "extracted_images"
         extracted_dir.mkdir(parents=True, exist_ok=True)
-        candidates = service._extract_pdf_images(run_path=run_dir, output_directory=extracted_dir)
-        if not candidates:
+
+        doc = pymupdf.open(str(pdf_files[0]))
+        images: list[dict] = []
+        seen_xrefs: set[int] = set()
+
+        try:
+            # Check first 4 pages — headshot is almost always on page 1 or 2
+            for page_idx in range(min(doc.page_count, 4)):
+                page = doc.load_page(page_idx)
+
+                # --- Method 1: XObject images (embedded image resources) ---
+                for img_tuple in page.get_images(full=True):
+                    xref = img_tuple[0]
+                    if xref in seen_xrefs:
+                        continue
+                    seen_xrefs.add(xref)
+                    try:
+                        extracted = doc.extract_image(xref)
+                    except Exception:
+                        continue
+                    data = extracted.get("image")
+                    if not data:
+                        continue
+                    w = int(extracted.get("width", 0))
+                    h = int(extracted.get("height", 0))
+                    if w < 80 or h < 80 or len(data) < 5_000:
+                        continue
+                    ext = extracted.get("ext", "png")
+                    img_id = f"xobj_{xref}"
+                    dest = extracted_dir / f"p{page_idx+1}_{img_id}.{ext}"
+                    dest.write_bytes(data)
+                    images.append({"id": img_id, "path": str(dest)})
+
+                # --- Method 2: Clip image regions from the rendered page ---
+                # get_image_info returns bbox for EVERY image including inline ones
+                for info_idx, info in enumerate(page.get_image_info()):
+                    bbox = info.get("bbox")
+                    if not bbox:
+                        continue
+                    rect = pymupdf.Rect(bbox)
+                    # Skip tiny icons / decorative elements (< 80×80 points)
+                    if rect.width < 80 or rect.height < 80:
+                        continue
+                    img_id = f"clip_p{page_idx+1}_{info_idx}"
+                    pix = page.get_pixmap(clip=rect, dpi=150, alpha=False)
+                    dest = extracted_dir / f"{img_id}.png"
+                    pix.save(str(dest))
+                    if dest.stat().st_size < 5_000:
+                        dest.unlink(missing_ok=True)
+                        continue
+                    images.append({"id": img_id, "path": str(dest)})
+        finally:
+            doc.close()
+
+        # Deduplicate: exact same file size → likely same image extracted twice
+        seen_sizes: set[int] = set()
+        deduped: list[dict] = []
+        for img in images:
+            p = Path(img["path"])
+            if not p.exists():
+                continue
+            sz = p.stat().st_size
+            if sz not in seen_sizes:
+                seen_sizes.add(sz)
+                deduped.append(img)
+        images = deduped
+
+        if not images:
+            logger.info("No usable images found in PDF")
             return None
-        portrait = service._select_candidate_portrait(candidates)
-        if not portrait:
+
+        logger.info("Found %d unique images in PDF — asking VLM to identify portrait", len(images))
+
+        client = OpenAI()
+        content: list = [{
+            "type": "text",
+            "text": (
+                f"I have {len(images)} image(s) extracted from a professional candidate dossier PDF. "
+                "Which image (if any) is a real photograph of a human face or head-and-shoulders portrait "
+                "of the candidate? Ignore logos, charts, graphs, orange/coloured shapes, decorative "
+                "backgrounds, and anything that is not an actual photo of a person. "
+                "Return JSON only: {\"portrait_id\": \"<id or null>\"}. "
+                "Return null if none of the images clearly shows a person's face."
+            ),
+        }]
+        id_map: dict[str, dict] = {}
+        for img in images:
+            p = Path(img["path"])
+            b64 = base64.b64encode(p.read_bytes()).decode()
+            content.append({"type": "text", "text": f"Image ID: {img['id']}"})
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "low"}})
+            id_map[img["id"]] = img
+
+        resp = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[{"role": "user", "content": content}],
+            response_format={"type": "json_object"},
+            max_tokens=100,
+        )
+        result = _json.loads(resp.choices[0].message.content or "{}")
+        portrait_id = result.get("portrait_id")
+        logger.info("VLM portrait selection: %s", portrait_id)
+
+        if not portrait_id or portrait_id not in id_map:
+            logger.info("VLM found no candidate portrait in PDF")
             return None
-        src_path = Path(portrait["path"])
+
+        src = Path(id_map[portrait_id]["path"])
         headshot_path = run_dir / "01_document" / "candidate_headshot.png"
         try:
             from PIL import Image
-            Image.open(src_path).save(headshot_path, "PNG")
+            Image.open(src).save(headshot_path, "PNG")
         except Exception:
             import shutil
-            shutil.copy2(src_path, headshot_path)
-        logger.info("Candidate headshot saved → %s", headshot_path)
+            shutil.copy2(src, headshot_path)
+        logger.info("Candidate headshot saved → %s", headshot_path.name)
         return headshot_path
+
     except Exception as exc:
         logger.warning("Headshot detection failed (non-fatal): %s", exc)
         return None
@@ -505,8 +621,24 @@ def _step_generate_scenes(run_dir: Path, headshot_path: Path | None = None):
 
 def _step_generate_artifacts(run_dir: Path, video_spec, headshot_path: Path | None = None) -> dict:
     from app.services.dsl_artifact_service import DSLArtifactService
+    from app.schemas.scene_dsl import ArtifactSpec
     output_dir = run_dir / "05b_artifacts"
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Ensure there is always at least one AI-generated image
+    artifact_ids = {a.artifact_id for a in video_spec.artifacts}
+    if not any(a.source == "generate" for a in video_spec.artifacts):
+        video_spec.artifacts.append(ArtifactSpec(
+            artifact_id="background_visual",
+            prompt=(
+                "A sophisticated, abstract executive background: deep navy blue gradient "
+                "with subtle geometric patterns, professional and cinematic, 4K quality, "
+                "no text, no people, suitable for a corporate video backdrop."
+            ),
+            orientation="landscape",
+            source="generate",
+        ))
+
     service = DSLArtifactService()
     return service.generate_artifacts(
         artifact_specs=video_spec.artifacts,
@@ -515,83 +647,66 @@ def _step_generate_artifacts(run_dir: Path, video_spec, headshot_path: Path | No
     )
 
 
-def _step_generate_audio(run_dir: Path, video_spec) -> tuple[Path | None, float]:
-    """Returns (audio_path, duration_seconds). duration_seconds is 0 if no audio."""
-    from app.pipeline.step_06_generate_audio import generate_audio
+def _step_generate_audio(run_dir: Path, video_spec) -> list[dict]:
+    """Returns list of scene audio dicts for DSLRenderService."""
+    import json as _json
+    from app.services.tts_service import TTSService
+    if not any(s.narration for s in video_spec.scenes):
+        return []
+    audio_dir = run_dir / "06_audio"
+    tts = TTSService()
+    scene_audio = tts.generate_scene_audio(video_spec.scenes, audio_dir)
 
-    narrations = [s.narration for s in video_spec.scenes if s.narration]
-    if not narrations:
-        return None, 0.0
+    # Write metadata so cost_service can calculate TTS spend
+    if scene_audio:
+        total_chars = sum(len(s.narration or "") for s in video_spec.scenes if s.narration)
+        total_duration = sum(a["duration_seconds"] for a in scene_audio)
+        (audio_dir / "audio_metadata.json").write_text(
+            _json.dumps({
+                "model": tts.model,
+                "voice": tts.voice,
+                "result": {
+                    "character_count": total_chars,
+                    "duration_seconds": total_duration,
+                    "scene_count": len(scene_audio),
+                },
+            }, indent=2),
+            encoding="utf-8",
+        )
 
-    # Write combined voiceover into the directory step_06 expects
-    storyboard_dir = run_dir / "05_storyboard"
-    storyboard_dir.mkdir(parents=True, exist_ok=True)
-    voiceover_path = storyboard_dir / "voiceover.txt"
-    voiceover_path.write_text("\n\n".join(narrations), encoding="utf-8")
-
-    metadata = generate_audio(run_directory=run_dir)
-    audio_path = Path(metadata["audio_path"])
-    duration = float(metadata.get("result", {}).get("duration_seconds") or 0)
-    return audio_path, duration
-
-
-def _align_scene_durations(video_spec_dict: dict, audio_seconds: float) -> dict:
-    """Scale all scene durations so total video duration exactly matches audio."""
-    import copy
-    spec = copy.deepcopy(video_spec_dict)
-    scenes = spec.get("scenes", [])
-    if not scenes or audio_seconds <= 0:
-        return spec
-
-    current_total = sum(s.get("duration_seconds", 8.0) for s in scenes)
-    if current_total <= 0:
-        return spec
-
-    # Always match audio exactly — both stretch and shrink
-    scale = audio_seconds / current_total
-    for scene in scenes:
-        old = scene.get("duration_seconds", 8.0)
-        # Schema: ge=3.0, le=20.0
-        scene["duration_seconds"] = max(3.0, min(20.0, round(old * scale, 1)))
-
-    return spec
+    audio_by_scene = {a["scene_id"]: a["duration_seconds"] for a in scene_audio}
+    # Stretch scene duration to fit audio, but warn when audio is much longer than planned
+    for scene in video_spec.scenes:
+        audio_dur = audio_by_scene.get(scene.scene_id)
+        if audio_dur:
+            if audio_dur + 1.5 > scene.duration_seconds:
+                logger.warning(
+                    "Scene %s: audio %.1fs > planned %.1fs — stretching scene",
+                    scene.scene_id, audio_dur, scene.duration_seconds,
+                )
+                scene.duration_seconds = round(audio_dur + 1.5, 1)
+    return scene_audio
 
 
 def _step_render(
     run_dir: Path,
     video_spec_dict: dict,
-    audio_path: Path | None = None,
+    scene_audio: list[dict] | None = None,
     artifact_manifest: dict | None = None,
 ) -> Path:
     from app.services.dsl_render_service import DSLRenderService
     output_dir = run_dir / "dsl_render"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_mp4 = output_dir / "candidate_video.mp4"
+    # Allow 10s of render time per second of video, minimum 300s
+    total_video_seconds = sum(s.get("duration_seconds", 10) for s in video_spec_dict.get("scenes", []))
+    timeout = max(300, int(total_video_seconds * 10))
     service = DSLRenderService()
-
-    scene_audio = None
-    if audio_path and audio_path.exists():
-        scene_audio = [{"scene_id": "__global__", "audio_path": str(audio_path), "duration_seconds": 0}]
-
     service.render(
         video_spec_dict=video_spec_dict,
         output_path=output_mp4,
         artifact_manifest=artifact_manifest,
-        scene_audio=scene_audio,
+        scene_audio=scene_audio or [],
+        timeout_seconds=timeout,
     )
     return output_mp4
-
-
-def _step_calculate_costs(run_dir: Path) -> dict:
-    try:
-        from app.services.cost_service import CostService
-        costs_dir = run_dir / "11_costs"
-        costs_dir.mkdir(parents=True, exist_ok=True)
-        service = CostService()
-        return service.calculate_run_costs(
-            run_directory=run_dir,
-            output_directory=costs_dir,
-        )
-    except Exception as exc:
-        logger.warning("Cost calculation failed: %s", exc)
-        return {"error": str(exc)}

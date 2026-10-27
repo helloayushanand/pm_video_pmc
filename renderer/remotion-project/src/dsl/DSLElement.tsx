@@ -127,7 +127,7 @@ const renderInner = (spec: ElementSpec, ctx: DSLContext): React.ReactNode => {
     case "portrait": {
       if (!spec.artifactId || !ctx.artifacts.artifacts.find((a) => a.artifactId === spec.artifactId)) {
         return React.createElement("div", {
-          style: {width: "100%", aspectRatio: "3 / 4", borderRadius: 24, background: theme.surface, border: `2px solid ${theme.border}`},
+          style: {width: "100%", flex: "1 1 0", minHeight: 0, borderRadius: 24, background: theme.surface, border: `2px solid ${theme.border}`},
         });
       }
       return React.createElement(PortraitFrame, {spec, ctx});

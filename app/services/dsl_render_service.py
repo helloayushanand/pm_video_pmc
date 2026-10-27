@@ -114,6 +114,8 @@ class DSLRenderService:
                 encoding="utf-8",
             )
 
+            import os
+            concurrency = os.getenv("REMOTION_CONCURRENCY", str(os.cpu_count() or 4))
             command = [
                 str(self.remotion_bin),
                 "render",
@@ -128,6 +130,8 @@ class DSLRenderService:
                 "yuv420p",
                 "--log",
                 "warn",
+                "--concurrency",
+                concurrency,
                 "--enforce-audio-track",
             ]
 

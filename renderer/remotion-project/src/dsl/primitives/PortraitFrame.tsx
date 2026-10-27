@@ -28,7 +28,8 @@ export const PortraitFrame: React.FC<Props> = ({spec, ctx}) => {
     {
       style: {
         width: "100%",
-        aspectRatio: "3 / 4",
+        flex: "1 1 0",
+        minHeight: 0,
         borderRadius: borderRad,
         overflow: "hidden",
         border: `4px solid ${borderColor}`,
