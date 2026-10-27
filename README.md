@@ -1,39 +1,58 @@
-# Model configuration
+# Positive Moves — Candidate Video Generator
 
-Visual component repair uses a separate model from component generation and
-visual QA. By default, repair uses `gpt-5`; the pipeline runner routes this
-setting directly to repair instead of overriding it with the general model.
-Set `OPENAI_VISUAL_REPAIR_MODEL` in `.env` to another model available to your
-API account if needed. `OPENAI_MODEL` continues to control generation and QA.
-The full pipeline makes one visual-repair attempt per scene. After repair, it
-re-reviews and recompiles changed components, then renders and assesses
-previews again. Repair guidance includes defect-specific actions, such as
-removing opacity fades from text when low contrast is detected during a reveal.
-The pipeline stops with the unapproved scene IDs if visual QA still fails or
-no valid repair can be produced.
+Turns a candidate dossier PDF into a narrated, branded video profile in minutes — no editing required.
 
-```dotenv
-OPENAI_MODEL=gpt-5-mini-2025-08-07
-OPENAI_VISUAL_REPAIR_MODEL=gpt-5
-```
+---
 
-Planned decorative images are generated automatically during a new run. Use
-`--skip-image-generation` to avoid that image-generation step. Extracted dossier
-images are visually checked with `OPENAI_MODEL`; a verified candidate headshot
-is automatically selected for the intro, while unrelated images are not
-treated as portraits or generic brand assets. If no headshot is verified, the
-planned portrait treatment remains the fallback. Generated components are
-automatically approved for compilation only after deterministic source
-validation passes; preview and final-video visual QA remain publication gates.
-Automatic image generation and visual headshot selection use the configured
-OpenAI models and incur their normal API costs.
+## What it does
 
-The standard pipeline selects up to five Creative Director-approved scenes
-for generated components (rather than the previous two-scene cap). Generated
-and library scenes share the same background treatment, brand chrome,
-typography, and theme colors; QA rejects clear design-system breaks. Scenes
-that fail review or rendering still use their safe library fallback.
+Upload a candidate dossier and the tool produces a 60–72 second video that:
 
-Visual QA only blocks publication for concrete blocking defects or scores
-below its defined thresholds. Non-blocking warnings are retained in the QA
-report and do not by themselves reject an otherwise usable scene.
+- Opens with the candidate's name, title, and headshot (extracted automatically from the dossier)
+- Walks through key career highlights, metrics, and sector expertise across 5–7 scenes
+- Includes voiced narration that adds context beyond what is visible on screen
+- Generates custom supporting visuals — charts, industry maps, infographics — based on actual figures from the dossier
+- Closes with a confidentiality notice
+
+The result is a polished, presentation-ready asset suitable for sharing with clients or internal review panels.
+
+---
+
+## Who it's for
+
+Positive Moves consultants preparing candidate profiles for client presentations. The tool handles the production work — layout, narration, visuals — so time can stay on the search.
+
+---
+
+## How to use it
+
+1. **Open the tool** in your browser at the address provided by your team.
+
+2. **Upload a dossier** — drag a PDF onto the upload area or click to browse. The dossier should be the standard candidate document used internally (typically 4–8 pages).
+
+3. **Start the run** — click Generate. The tool works through several stages automatically: reading the document, selecting content, designing scenes, generating visuals, and producing audio. A live progress panel shows each stage.
+
+4. **Review the video** — once complete, the video is available to download as an MP4. A cost summary is shown alongside it.
+
+5. **Re-run if needed** — each run is independent. Upload the same or a revised dossier to produce a fresh version.
+
+---
+
+## Output
+
+Each run produces:
+
+- **MP4 video** — 1920×1080, ready to share or embed in a presentation
+- **Cost summary** — a breakdown of what the run consumed across document reading, content selection, visual generation, and narration
+
+---
+
+## Setup
+
+Contact the team for access credentials and the local address to reach the tool. No installation is required on your machine.
+
+---
+
+## Handling candidate data
+
+All dossiers and generated outputs are private. Do not share run outputs outside authorised channels. The tool does not store documents after the session ends.
